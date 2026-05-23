@@ -1,0 +1,297 @@
+/* ─────────────────────────────────────────────────────────────
+   Growe Web — Design Tokens
+   Espejo de mobile/constants/colors.ts + mobile/constants/styles.ts
+   Dark = default. Light se activa con [data-theme="light"].
+   ───────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="dark"] {
+  /* === BACKGROUNDS === */
+  --bg: #000000;
+  --bg-secondary: #1C1C1E;
+  --bg-tertiary: #2C2C2E;
+  --bg-elevated: #2C2C2E;
+
+  /* === CARDS === */
+  --card: #1C1C1E;
+  --card-elevated: #2C2C2E;
+  --card-border: rgba(255, 255, 255, 0.06);
+  --card-border-light: rgba(255, 255, 255, 0.10);
+  --card-highlight: rgba(255, 255, 255, 0.04);
+
+  /* === iOS SYSTEM COLORS === */
+  --primary: #0A84FF;
+  --success: #30D158;
+  --destructive: #FF453A;
+  --warning: #FF9F0A;
+  --accent: #FFD60A;
+  --teal: #64D2FF;
+  --purple: #BF5AF2;
+  --pink: #FF375F;
+  --indigo: #5E5CE6;
+
+  /* === FOREGROUND (text) === */
+  --fg: #FFFFFF;
+  --fg-secondary: rgba(235, 235, 245, 0.6);
+  --fg-tertiary: rgba(235, 235, 245, 0.3);
+  --fg-quaternary: rgba(235, 235, 245, 0.18);
+  --muted: rgba(235, 235, 245, 0.6);
+
+  /* === SEPARATORS === */
+  --separator: rgba(84, 84, 88, 0.65);
+  --separator-subtle: rgba(84, 84, 88, 0.30);
+  --separator-opaque: #38383A;
+  --border: rgba(84, 84, 88, 0.65);
+
+  /* === FILLS === */
+  --fill: rgba(120, 120, 128, 0.36);
+  --fill-secondary: rgba(120, 120, 128, 0.32);
+  --fill-tertiary: rgba(120, 120, 128, 0.24);
+  --fill-quaternary: rgba(120, 120, 128, 0.18);
+
+  /* === ON-COLOR === */
+  --on-primary: #FFFFFF;
+  --on-success: #FFFFFF;
+  --on-destructive: #FFFFFF;
+  --on-accent: #000000;
+
+  /* === SEMANTIC === */
+  --secondary: #2C2C2E;
+  --flame: #E5A430;
+  --flame-mid: #D49428;
+  --flame-secondary: #C4841E;
+
+  /* === ALPHAS === */
+  --primary-alpha-08: rgba(10, 132, 255, 0.08);
+  --primary-alpha-12: rgba(10, 132, 255, 0.12);
+  --primary-alpha-16: rgba(10, 132, 255, 0.16);
+  --primary-alpha-20: rgba(10, 132, 255, 0.20);
+  --primary-alpha-30: rgba(10, 132, 255, 0.30);
+  --success-alpha-12: rgba(48, 209, 88, 0.12);
+  --success-alpha-20: rgba(48, 209, 88, 0.20);
+  --success-alpha-30: rgba(48, 209, 88, 0.30);
+  --destructive-alpha-12: rgba(255, 69, 58, 0.12);
+  --destructive-alpha-20: rgba(255, 69, 58, 0.20);
+  --warning-alpha-20: rgba(255, 159, 10, 0.20);
+  --warning-alpha-30: rgba(255, 159, 10, 0.30);
+  --accent-alpha-12: rgba(255, 208, 10, 0.12);
+  --accent-alpha-20: rgba(255, 208, 10, 0.20);
+  --teal-alpha-20: rgba(100, 210, 255, 0.20);
+  --purple-alpha-12: rgba(191, 90, 242, 0.12);
+  --purple-alpha-16: rgba(191, 90, 242, 0.16);
+  --flame-alpha-10: rgba(229, 164, 48, 0.10);
+  --flame-alpha-20: rgba(229, 164, 48, 0.20);
+  --flame-alpha-25: rgba(229, 164, 48, 0.25);
+
+  /* === CHART === */
+  --chart-1: #0A84FF;
+  --chart-2: #FFD60A;
+  --chart-3: #BF5AF2;
+  --chart-4: #30D158;
+  --chart-5: #FF375F;
+
+  /* === DAY BADGES === */
+  --day-mon: rgba(10, 132, 255, 0.35);
+  --day-tue: rgba(48, 209, 88, 0.35);
+  --day-wed: rgba(191, 90, 242, 0.35);
+  --day-thu: rgba(255, 159, 10, 0.35);
+  --day-fri: rgba(255, 55, 95, 0.35);
+  --day-sat: rgba(100, 210, 255, 0.35);
+  --day-sun: rgba(255, 208, 10, 0.35);
+
+  /* === HEATMAP === */
+  --heatmap-0: rgba(120, 120, 128, 0.12);
+  --heatmap-1: rgba(229, 164, 48, 0.25);
+  --heatmap-2: rgba(229, 164, 48, 0.50);
+  --heatmap-3: rgba(229, 164, 48, 0.75);
+  --heatmap-4: rgba(229, 100, 10, 0.90);
+
+  /* === HOME GRADIENT (ámbar → primary) === */
+  --gradient-start: rgba(229, 164, 48, 0.10);
+  --gradient-end: rgba(10, 132, 255, 0.10);
+  --fab-gradient-start: rgba(229, 164, 48, 0.65);
+  --fab-gradient-end: rgba(10, 132, 255, 0.65);
+
+  /* === OVERLAYS === */
+  --overlay-subtle: rgba(0, 0, 0, 0.25);
+  --overlay-medium: rgba(0, 0, 0, 0.55);
+  --overlay-heavy: rgba(0, 0, 0, 0.85);
+
+  /* === SIDEBAR === */
+  --sidebar-bg: #1C1C1E;
+  --sidebar-border: rgba(84, 84, 88, 0.65);
+  --sidebar-item-hover: rgba(255, 255, 255, 0.04);
+  --sidebar-item-active: rgba(10, 132, 255, 0.16);
+
+  /* === SHADOWS === */
+  --shadow-subtle: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.20);
+  --shadow-modal: 0 -2px 16px rgba(0, 0, 0, 0.20);
+}
+
+/* ─── Light mode (Apple iOS light, HIG-compliant) ────────── */
+[data-theme="light"] {
+  --bg: #F2F2F7;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #F2F2F7;
+  --bg-elevated: #FFFFFF;
+
+  --card: #FFFFFF;
+  --card-elevated: #FFFFFF;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --card-border-light: rgba(0, 0, 0, 0.12);
+  --card-highlight: rgba(0, 0, 0, 0.04);
+
+  --primary: #007AFF;
+  --success: #34C759;
+  --destructive: #FF3B30;
+  --warning: #FF9500;
+  --accent: #FF9500;
+  --teal: #32ADE6;
+  --purple: #AF52DE;
+  --pink: #FF2D55;
+  --indigo: #5856D6;
+
+  --fg: #000000;
+  --fg-secondary: rgba(60, 60, 67, 0.6);
+  --fg-tertiary: rgba(60, 60, 67, 0.3);
+  --fg-quaternary: rgba(60, 60, 67, 0.18);
+  --muted: rgba(60, 60, 67, 0.6);
+
+  --separator: rgba(60, 60, 67, 0.29);
+  --separator-subtle: rgba(0, 0, 0, 0.10);
+  --separator-opaque: #C6C6C8;
+  --border: rgba(60, 60, 67, 0.29);
+
+  --fill: rgba(120, 120, 128, 0.20);
+  --fill-secondary: rgba(120, 120, 128, 0.16);
+  --fill-tertiary: rgba(120, 120, 128, 0.12);
+  --fill-quaternary: rgba(120, 120, 128, 0.08);
+
+  --on-primary: #FFFFFF;
+  --on-success: #FFFFFF;
+  --on-destructive: #FFFFFF;
+  --on-accent: #000000;
+
+  --secondary: #F2F2F7;
+  --flame: #D49428;
+  --flame-mid: #C48820;
+  --flame-secondary: #B47818;
+
+  --primary-alpha-08: rgba(0, 122, 255, 0.08);
+  --primary-alpha-12: rgba(0, 122, 255, 0.12);
+  --primary-alpha-16: rgba(0, 122, 255, 0.16);
+  --primary-alpha-20: rgba(0, 122, 255, 0.20);
+  --primary-alpha-30: rgba(0, 122, 255, 0.30);
+  --success-alpha-12: rgba(52, 199, 89, 0.12);
+  --success-alpha-20: rgba(52, 199, 89, 0.20);
+  --success-alpha-30: rgba(52, 199, 89, 0.30);
+  --destructive-alpha-12: rgba(255, 59, 48, 0.12);
+  --destructive-alpha-20: rgba(255, 59, 48, 0.20);
+  --warning-alpha-20: rgba(255, 149, 0, 0.20);
+  --warning-alpha-30: rgba(255, 149, 0, 0.30);
+  --accent-alpha-12: rgba(255, 149, 0, 0.12);
+  --accent-alpha-20: rgba(255, 149, 0, 0.20);
+  --teal-alpha-20: rgba(50, 173, 230, 0.20);
+  --purple-alpha-12: rgba(175, 82, 222, 0.12);
+  --purple-alpha-16: rgba(175, 82, 222, 0.16);
+  --flame-alpha-10: rgba(212, 148, 40, 0.10);
+  --flame-alpha-20: rgba(212, 148, 40, 0.20);
+  --flame-alpha-25: rgba(212, 148, 40, 0.25);
+
+  --chart-1: #007AFF;
+  --chart-2: #FF9500;
+  --chart-3: #AF52DE;
+  --chart-4: #34C759;
+  --chart-5: #FF2D55;
+
+  --day-mon: rgba(0, 122, 255, 0.20);
+  --day-tue: rgba(52, 199, 89, 0.20);
+  --day-wed: rgba(175, 82, 222, 0.20);
+  --day-thu: rgba(255, 149, 0, 0.20);
+  --day-fri: rgba(255, 45, 85, 0.20);
+  --day-sat: rgba(50, 173, 230, 0.20);
+  --day-sun: rgba(255, 149, 0, 0.20);
+
+  --heatmap-0: rgba(120, 120, 128, 0.09);
+  --heatmap-1: rgba(229, 164, 48, 0.20);
+  --heatmap-2: rgba(229, 164, 48, 0.45);
+  --heatmap-3: rgba(229, 164, 48, 0.70);
+  --heatmap-4: rgba(229, 100, 10, 0.88);
+
+  --gradient-start: rgba(229, 164, 48, 0.08);
+  --gradient-end: rgba(0, 122, 255, 0.10);
+  --fab-gradient-start: rgba(229, 164, 48, 0.65);
+  --fab-gradient-end: rgba(0, 122, 255, 0.65);
+
+  --overlay-subtle: rgba(0, 0, 0, 0.25);
+  --overlay-medium: rgba(0, 0, 0, 0.55);
+  --overlay-heavy: rgba(0, 0, 0, 0.85);
+
+  --sidebar-bg: #FFFFFF;
+  --sidebar-border: rgba(60, 60, 67, 0.29);
+  --sidebar-item-hover: rgba(0, 0, 0, 0.04);
+  --sidebar-item-active: rgba(0, 122, 255, 0.12);
+
+  --shadow-subtle: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-modal: 0 -2px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* ─── Spacing scale (mobile/constants/styles.ts) ─────────── */
+:root {
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-xxl: 24px;
+  --space-xxxl: 32px;
+  --space-4xl: 48px;
+  --space-5xl: 64px;
+}
+
+/* ─── Border radius scale ────────────────────────────────── */
+:root {
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 13px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-pill: 9999px;
+}
+
+/* ─── Font scale ─────────────────────────────────────────── */
+:root {
+  --font-xxs: 10px;
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 13px;
+  --font-base: 14px;
+  --font-lg: 16px;
+  --font-xl: 18px;
+  --font-xxl: 24px;
+  --font-display: 28px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+  --weight-black: 900;
+
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+/* ─── Layout dimensions (web-only) ───────────────────────── */
+:root {
+  --sidebar-width: 248px;
+  --topbar-height: 64px;
+  --content-max-width: 1280px;
+}

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Growe Coach — Rutinas</title>
+  <link rel="stylesheet" href="shared/tokens.css" />
+  <link rel="stylesheet" href="shared/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo"><img src="assets/growe_flame.svg" alt="Growe" /></div>
+        <span>Growe Coach</span>
+      </div>
+      <a class="sidebar-item" href="02-dashboard.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a class="sidebar-item" href="03-students-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Alumnos</span>
+      </a>
+      <a class="sidebar-item active" href="05-routines-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+        <span>Rutinas</span>
+      </a>
+      <a class="sidebar-item" href="07-plannings-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+        <span>Planificaciones</span>
+      </a>
+      <div class="sidebar-section">Cuenta</div>
+      <a class="sidebar-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Perfil</span>
+      </a>
+    </aside>
+
+    <header class="topbar">
+      <div class="topbar-title">Rutinas</div>
+      <div class="topbar-actions">
+        <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        </button>
+        <div class="avatar">AC</div>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Mis rutinas</h1>
+          <p class="page-subtitle">Rutinas reutilizables que podés asignar a alumnos</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Nueva rutina
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div style="display: flex; gap: var(--space-md); margin-bottom: var(--space-lg); align-items: center; flex-wrap: wrap;">
+        <div class="input-with-icon" style="flex: 1; max-width: 360px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input class="input" type="text" placeholder="Buscar rutina por nombre..." />
+        </div>
+        <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+          <span class="chip active">Todas (12)</span>
+          <span class="chip">Asignadas (8)</span>
+          <span class="chip">Sin asignar (4)</span>
+        </div>
+      </div>
+
+      <!-- Grid de rutinas -->
+      <div class="grid grid-3">
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-success">8 alumnos</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Push/Pull/Legs Hipertrofia</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">8 ejercicios · Lun/Mié/Vie</p>
+          <p class="text-xs muted" style="margin: 0;">Editada hace 3 días</p>
+        </a>
+
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-success">5 alumnos</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Full Body 4x semana</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">6 ejercicios · Lun/Mar/Jue/Vie</p>
+          <p class="text-xs muted" style="margin: 0;">Editada hace 1 semana</p>
+        </a>
+
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-success">3 alumnos</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Upper/Lower Fuerza</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">7 ejercicios · 4 días/semana</p>
+          <p class="text-xs muted" style="margin: 0;">Editada hace 2 semanas</p>
+        </a>
+
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-neutral">Sin asignar</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Glúteos &amp; Femoral</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">5 ejercicios · 2 días/semana</p>
+          <p class="text-xs muted" style="margin: 0;">Creada ayer</p>
+        </a>
+
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-success">6 alumnos</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Espalda + Bíceps</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">8 ejercicios · 1-2 días/semana</p>
+          <p class="text-xs muted" style="margin: 0;">Editada hoy</p>
+        </a>
+
+        <a href="06-routine-editor.html" class="card-gradient" style="text-decoration: none; color: inherit;">
+          <div class="card-header" style="margin-bottom: var(--space-md);">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+            </div>
+            <span class="badge badge-success">4 alumnos</span>
+          </div>
+          <h3 class="card-title" style="margin: 0 0 var(--space-xs);">Pecho + Tríceps</h3>
+          <p class="muted text-sm" style="margin: 0 0 var(--space-md);">7 ejercicios · 1-2 días/semana</p>
+          <p class="text-xs muted" style="margin: 0;">Editada hace 5 días</p>
+        </a>
+
+        <!-- Empty state CTA card -->
+        <a href="06-routine-editor.html" class="empty-state" style="text-decoration: none; color: inherit;">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          </div>
+          <h3 class="empty-state-title">Crear rutina nueva</h3>
+          <p class="empty-state-description">Agregá ejercicios, series y descansos. Asignala a uno o varios alumnos.</p>
+        </a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

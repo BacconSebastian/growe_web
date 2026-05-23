@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Growe Coach — Alumnos</title>
+  <link rel="stylesheet" href="shared/tokens.css" />
+  <link rel="stylesheet" href="shared/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo"><img src="assets/growe_flame.svg" alt="Growe" /></div>
+        <span>Growe Coach</span>
+      </div>
+      <a class="sidebar-item" href="02-dashboard.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a class="sidebar-item active" href="03-students-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Alumnos</span>
+      </a>
+      <a class="sidebar-item" href="05-routines-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+        <span>Rutinas</span>
+      </a>
+      <a class="sidebar-item" href="07-plannings-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+        <span>Planificaciones</span>
+      </a>
+      <div class="sidebar-section">Cuenta</div>
+      <a class="sidebar-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Perfil</span>
+      </a>
+    </aside>
+
+    <header class="topbar">
+      <div class="topbar-title">Alumnos</div>
+      <div class="topbar-actions">
+        <button
+          class="theme-toggle"
+          onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        </button>
+        <div class="avatar">AC</div>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Mis alumnos</h1>
+          <p class="page-subtitle">24 alumnos · 18 activos esta semana</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Invitar alumno
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtros + búsqueda -->
+      <div style="display: flex; gap: var(--space-md); margin-bottom: var(--space-lg); align-items: center; flex-wrap: wrap;">
+        <div class="input-with-icon" style="flex: 1; max-width: 360px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input class="input" type="text" placeholder="Buscar por nombre o email..." />
+        </div>
+        <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+          <span class="chip active">Todos (24)</span>
+          <span class="chip">Activos (18)</span>
+          <span class="chip">Inactivos (6)</span>
+          <span class="chip">Con planning (12)</span>
+        </div>
+      </div>
+
+      <!-- Tabla -->
+      <div class="table-wrapper">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Alumno</th>
+              <th>Última actividad</th>
+              <th>Planning activo</th>
+              <th>Adherencia</th>
+              <th style="width: 80px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">MR</div>
+                  <div>
+                    <div class="table-row-user-name">Mateo Rodríguez</div>
+                    <div class="table-row-user-email">mateo.r@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot online"></span> Hace 2 horas</td>
+              <td>Push/Pull/Legs · Semana 3</td>
+              <td><span class="badge badge-success">92%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">SP</div>
+                  <div>
+                    <div class="table-row-user-name">Sofía Pérez</div>
+                    <div class="table-row-user-email">sofia.perez@hotmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot online"></span> Hace 5 horas</td>
+              <td>Full Body 4x · Semana 2</td>
+              <td><span class="badge badge-success">88%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">DT</div>
+                  <div>
+                    <div class="table-row-user-name">Diego Torres</div>
+                    <div class="table-row-user-email">diego.torres@yahoo.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot idle"></span> Ayer</td>
+              <td>Upper/Lower · Semana 5</td>
+              <td><span class="badge badge-warning">68%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">CA</div>
+                  <div>
+                    <div class="table-row-user-name">Camila Álvarez</div>
+                    <div class="table-row-user-email">camila.alv@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot offline"></span> Hace 4 días</td>
+              <td>Sin planning</td>
+              <td><span class="badge badge-danger">22%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">NV</div>
+                  <div>
+                    <div class="table-row-user-name">Nicolás Vega</div>
+                    <div class="table-row-user-email">nico.vega@outlook.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot online"></span> Hoy</td>
+              <td>PPL Hipertrofia · Semana 1</td>
+              <td><span class="badge badge-success">100%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">EL</div>
+                  <div>
+                    <div class="table-row-user-name">Emma López</div>
+                    <div class="table-row-user-email">emma.lopez@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot online"></span> Hace 1 día</td>
+              <td>Full Body 3x · Semana 4</td>
+              <td><span class="badge badge-success">78%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">FR</div>
+                  <div>
+                    <div class="table-row-user-name">Federico Ramírez</div>
+                    <div class="table-row-user-email">fede.ramirez@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot idle"></span> Hace 2 días</td>
+              <td>Upper/Lower · Semana 3</td>
+              <td><span class="badge badge-warning">55%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="table-row-user">
+                  <div class="avatar">VM</div>
+                  <div>
+                    <div class="table-row-user-name">Valentina Morales</div>
+                    <div class="table-row-user-email">valen.m@hotmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-dot online"></span> Hoy</td>
+              <td>Push/Pull/Legs · Semana 6</td>
+              <td><span class="badge badge-success">95%</span></td>
+              <td><a href="04-student-detail.html" class="btn btn-sm btn-ghost">Ver</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación -->
+      <div class="pagination">
+        <div class="pagination-info">Mostrando 1–8 de 24 alumnos</div>
+        <div class="pagination-controls">
+          <button class="btn btn-sm btn-secondary" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Anterior
+          </button>
+          <button class="btn btn-sm btn-secondary">
+            Siguiente
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

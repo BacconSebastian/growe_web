@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Growe Coach — Editor de rutina</title>
+  <link rel="stylesheet" href="shared/tokens.css" />
+  <link rel="stylesheet" href="shared/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo"><img src="assets/growe_flame.svg" alt="Growe" /></div>
+        <span>Growe Coach</span>
+      </div>
+      <a class="sidebar-item" href="02-dashboard.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a class="sidebar-item" href="03-students-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Alumnos</span>
+      </a>
+      <a class="sidebar-item active" href="05-routines-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+        <span>Rutinas</span>
+      </a>
+      <a class="sidebar-item" href="07-plannings-list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+        <span>Planificaciones</span>
+      </a>
+    </aside>
+
+    <header class="topbar">
+      <div class="topbar-title">
+        <a href="05-routines-list.html" class="muted text-sm" style="text-decoration: none;">Rutinas /</a>
+        Push/Pull/Legs Hipertrofia
+      </div>
+      <div class="topbar-actions">
+        <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        </button>
+        <div class="avatar">AC</div>
+      </div>
+    </header>
+
+    <main class="main" style="display: grid; grid-template-columns: 1fr 320px; gap: var(--space-xxl); max-width: none;">
+      <!-- Columna principal: editor -->
+      <div>
+        <div class="page-header">
+          <div style="flex: 1;">
+            <input class="input" value="Push/Pull/Legs Hipertrofia" style="font-size: var(--font-xxl); font-weight: var(--weight-bold); height: 52px; background: transparent; border-color: transparent; padding-left: 0;" />
+            <input class="input" value="Rutina de 8 ejercicios para hipertrofia · Frecuencia 2" style="font-size: var(--font-base); height: 36px; background: transparent; border-color: transparent; padding-left: 0; color: var(--fg-secondary); margin-top: var(--space-xs);" />
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-secondary btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              Duplicar
+            </button>
+            <button class="btn btn-sm" style="background: var(--destructive-alpha-20); color: var(--destructive);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Eliminar
+            </button>
+            <button class="btn btn-sm">Guardar</button>
+          </div>
+        </div>
+
+        <!-- Días asignados -->
+        <div class="card" style="margin-bottom: var(--space-lg);">
+          <h3 class="card-title" style="margin: 0 0 var(--space-md);">Días de entrenamiento</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+            <span class="day-badge day-mon" style="cursor: pointer;">Lun</span>
+            <span class="day-badge" style="background: var(--fill-tertiary); color: var(--fg-tertiary); cursor: pointer;">Mar</span>
+            <span class="day-badge day-wed" style="cursor: pointer;">Mié</span>
+            <span class="day-badge" style="background: var(--fill-tertiary); color: var(--fg-tertiary); cursor: pointer;">Jue</span>
+            <span class="day-badge day-fri" style="cursor: pointer;">Vie</span>
+            <span class="day-badge" style="background: var(--fill-tertiary); color: var(--fg-tertiary); cursor: pointer;">Sáb</span>
+            <span class="day-badge" style="background: var(--fill-tertiary); color: var(--fg-tertiary); cursor: pointer;">Dom</span>
+          </div>
+        </div>
+
+        <!-- Ejercicio 1 expandido -->
+        <div class="card" style="margin-bottom: var(--space-lg);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-lg);">
+            <div style="display: flex; align-items: center; gap: var(--space-md);">
+              <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+                <span style="font-weight: var(--weight-bold);">1</span>
+              </div>
+              <div>
+                <h3 class="card-title" style="margin: 0;">Press banca con barra</h3>
+                <p class="muted text-sm" style="margin: 0;">Pecho · Compuesto · Tipo: peso</p>
+              </div>
+            </div>
+            <div style="display: flex; gap: var(--space-xs);">
+              <button class="btn-icon" title="Variables">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+              <button class="btn-icon" title="Eliminar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+          <table class="sets-table">
+            <thead>
+              <tr>
+                <th style="width: 60px;">Serie</th>
+                <th>Reps</th>
+                <th>Peso (kg)</th>
+                <th>RIR</th>
+                <th>Descanso (s)</th>
+                <th style="width: 40px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1</strong></td>
+                <td><input class="input" value="10" type="number" /></td>
+                <td><input class="input" value="60" type="number" /></td>
+                <td><input class="input" value="3" type="number" /></td>
+                <td><input class="input" value="90" type="number" /></td>
+                <td><button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></td>
+              </tr>
+              <tr>
+                <td><strong>2</strong></td>
+                <td><input class="input" value="8" type="number" /></td>
+                <td><input class="input" value="70" type="number" /></td>
+                <td><input class="input" value="2" type="number" /></td>
+                <td><input class="input" value="120" type="number" /></td>
+                <td><button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></td>
+              </tr>
+              <tr>
+                <td><strong>3</strong></td>
+                <td><input class="input" value="6" type="number" /></td>
+                <td><input class="input" value="80" type="number" /></td>
+                <td><input class="input" value="1" type="number" /></td>
+                <td><input class="input" value="120" type="number" /></td>
+                <td><button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></td>
+              </tr>
+              <tr>
+                <td><strong>4</strong></td>
+                <td><input class="input" value="6" type="number" /></td>
+                <td><input class="input" value="80" type="number" /></td>
+                <td><input class="input" value="0" type="number" /></td>
+                <td><input class="input" value="180" type="number" /></td>
+                <td><button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button class="btn btn-ghost btn-sm" style="margin-top: var(--space-md);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Agregar serie
+          </button>
+        </div>
+
+        <!-- Ejercicio 2 colapsado -->
+        <div class="card" style="margin-bottom: var(--space-lg); padding: var(--space-md) var(--space-xl);">
+          <div style="display: flex; align-items: center; gap: var(--space-md); cursor: pointer;">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <span style="font-weight: var(--weight-bold);">2</span>
+            </div>
+            <div style="flex: 1;">
+              <h3 class="card-title" style="margin: 0; font-size: var(--font-base);">Aperturas con mancuernas</h3>
+              <p class="muted text-sm" style="margin: 0;">3 series · 12-15 reps · 60s descanso</p>
+            </div>
+            <button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          </div>
+        </div>
+
+        <!-- Ejercicio 3 colapsado -->
+        <div class="card" style="margin-bottom: var(--space-lg); padding: var(--space-md) var(--space-xl);">
+          <div style="display: flex; align-items: center; gap: var(--space-md); cursor: pointer;">
+            <div class="btn-icon btn-icon-primary" style="pointer-events: none;">
+              <span style="font-weight: var(--weight-bold);">3</span>
+            </div>
+            <div style="flex: 1;">
+              <h3 class="card-title" style="margin: 0; font-size: var(--font-base);">Press militar con mancuernas</h3>
+              <p class="muted text-sm" style="margin: 0;">4 series · 8-10 reps · 90s descanso</p>
+            </div>
+            <button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          </div>
+        </div>
+
+        <!-- Superset colapsado (chip distinto) -->
+        <div class="card" style="margin-bottom: var(--space-lg); padding: var(--space-md) var(--space-xl);">
+          <div style="display: flex; align-items: center; gap: var(--space-md); cursor: pointer;">
+            <div class="btn-icon" style="background: var(--purple-alpha-16); color: var(--purple); pointer-events: none;">
+              <span style="font-weight: var(--weight-bold);">4</span>
+            </div>
+            <div style="flex: 1;">
+              <h3 class="card-title" style="margin: 0; font-size: var(--font-base);">
+                Superset: Triceps pulley + Extensión francesa
+                <span class="badge badge-purple" style="margin-left: var(--space-sm);">Superset</span>
+              </h3>
+              <p class="muted text-sm" style="margin: 0;">3 rondas · A: 12 reps · B: 10 reps</p>
+            </div>
+            <button class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          </div>
+        </div>
+
+        <button class="btn btn-outline" style="width: 100%;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          Agregar ejercicio
+        </button>
+      </div>
+
+      <!-- Side panel: Asignar a alumno -->
+      <aside style="display: flex; flex-direction: column; gap: var(--space-lg);">
+        <div class="card">
+          <h3 class="card-title" style="margin: 0 0 var(--space-md);">Asignada a</h3>
+          <div class="list">
+            <div class="list-item">
+              <div class="avatar avatar-sm">MR</div>
+              <div class="list-item-body">
+                <p class="list-item-title text-sm">Mateo Rodríguez</p>
+              </div>
+              <button class="btn-icon btn-icon-danger" title="Desasignar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            <div class="list-item">
+              <div class="avatar avatar-sm">SP</div>
+              <div class="list-item-body">
+                <p class="list-item-title text-sm">Sofía Pérez</p>
+              </div>
+              <button class="btn-icon btn-icon-danger" title="Desasignar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            <div class="list-item">
+              <div class="avatar avatar-sm">NV</div>
+              <div class="list-item-body">
+                <p class="list-item-title text-sm">Nicolás Vega</p>
+              </div>
+              <button class="btn-icon btn-icon-danger" title="Desasignar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" style="width: 100%; margin-top: var(--space-md);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Asignar a alumno
+          </button>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="margin: 0 0 var(--space-md);">Detalles</h3>
+          <dl style="margin: 0; display: grid; gap: var(--space-sm);">
+            <div style="display: flex; justify-content: space-between; font-size: var(--font-sm);">
+              <dt class="muted">Creada</dt>
+              <dd style="margin: 0;">15 Feb 2026</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: var(--font-sm);">
+              <dt class="muted">Última edición</dt>
+              <dd style="margin: 0;">Hoy, 14:30</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: var(--font-sm);">
+              <dt class="muted">Total ejercicios</dt>
+              <dd style="margin: 0;">8</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: var(--font-sm);">
+              <dt class="muted">Duración estimada</dt>
+              <dd style="margin: 0;">~65 min</dd>
+            </div>
+          </dl>
+        </div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

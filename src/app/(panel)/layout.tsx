@@ -8,10 +8,11 @@ import { usePathname } from "next/navigation";
 
 /** Deriva el título de la topbar a partir del pathname */
 function getTitleFromPathname(pathname: string): string {
-  if (pathname === "/") return "Dashboard";
+  if (pathname === "/" || pathname === "/dashboard") return "Dashboard";
   if (pathname.startsWith("/students")) return "Alumnos";
   if (pathname.startsWith("/routines")) return "Rutinas";
   if (pathname.startsWith("/plannings")) return "Planificaciones";
+  if (pathname.startsWith("/exercises")) return "Ejercicios";
   if (pathname.startsWith("/profile")) return "Perfil";
   return "Growe Coach";
 }
@@ -33,7 +34,7 @@ function PanelShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <Topbar
         title={title}
-        showSearch={pathname === "/" || pathname.startsWith("/students")}
+        showSearch={pathname === "/dashboard" || pathname.startsWith("/students")}
       />
       <main
         style={{

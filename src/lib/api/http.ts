@@ -166,7 +166,7 @@ export async function httpFetch<T>(input: string, init?: FetchOptions): Promise<
 
   let response: Response;
   try {
-    response = await fetchWithTimeout(url, { ...rest, headers: builtHeaders }, timeoutMs, externalSignal);
+    response = await fetchWithTimeout(url, { ...rest, headers: builtHeaders }, timeoutMs, externalSignal ?? undefined);
   } catch (err) {
     const isAbort = err instanceof Error && err.name === "AbortError";
     if (isAbort && externalSignal?.aborted) throw err;

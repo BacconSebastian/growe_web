@@ -10,6 +10,7 @@ import {
   CalendarDays,
   User,
   LogOut,
+  Layers,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -21,7 +22,7 @@ interface SidebarItem {
 
 const NAV_ITEMS: SidebarItem[] = [
   {
-    href: "/",
+    href: "/dashboard",
     label: "Dashboard",
     icon: <LayoutDashboard size={18} />,
   },
@@ -40,6 +41,11 @@ const NAV_ITEMS: SidebarItem[] = [
     label: "Planificaciones",
     icon: <CalendarDays size={18} />,
   },
+  {
+    href: "/exercises",
+    label: "Ejercicios",
+    icon: <Layers size={18} />,
+  },
 ];
 
 /**
@@ -53,7 +59,7 @@ export const Sidebar: React.FC = () => {
   const { logout } = useAuth();
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
+    if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     return pathname.startsWith(href);
   };
 

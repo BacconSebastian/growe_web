@@ -7,10 +7,9 @@ import { isCoach } from "@/lib/utils";
 
 /**
  * Página raíz: redirige según estado de autenticación.
- * - Inicializando → spinner.
- * - Sin user → /login.
- * - User coach → / (panel, que está en (panel)/page.tsx).
- * - User no-coach → /login.
+ * - Inicializando → spinner mientras valida tokens.
+ * - Sin user (o no coach) → /login.
+ * - User coach → /dashboard.
  */
 export default function RootPage() {
   const { user, initializing } = useAuth();
@@ -21,8 +20,9 @@ export default function RootPage() {
 
     if (!user || !isCoach(user)) {
       router.replace("/login");
+    } else {
+      router.replace("/dashboard");
     }
-    // Si es coach, Next.js sirve (panel)/page.tsx automáticamente en "/"
   }, [user, initializing, router]);
 
   return (

@@ -43,6 +43,12 @@ Next.js que habla con la misma API Railway que el mobile.
   desactivar / programar, asignar/desasignar.
 - Edición **in-place** de rutinas y plannings del alumno (cuando
   `created_by === coachId` — authorship constraint).
+- **Ejercicios personalizados:** lista de "mis ejercicios" del coach (`GET
+  /api/exercises/mine`), crear (`POST /api/exercises`), editar (`PUT`),
+  eliminar (`DELETE`). Buscador del catálogo público (`GET /api/exercises/search`).
+- **Perfil del coach:** ver y editar (`GET /api/auth/profile`, `PATCH /api/auth/profile`),
+  cambiar contraseña (`POST /api/auth/change-password`), subir/eliminar avatar
+  (`POST/DELETE /api/auth/avatar`), eliminar cuenta (`DELETE /api/auth/account`).
 - Theme switcher dark / light (default dark).
 - Layout responsive desktop-first hasta tablet (768px). Mobile redirige a la app.
 
@@ -61,6 +67,11 @@ Next.js que habla con la misma API Railway que el mobile.
 - Achievements.
 - Community / leaderboards.
 - Multi-tema (pink/blue/green) — solo dark + light en v1.
+- Verificación de email / forgot-password / reset-password (los coaches ya
+  tienen cuenta verificada cuando entran al panel; flujos pueden quedar para
+  iteración posterior).
+- Bulk import de ejercicios via Excel.
+- Exercise media (videos, GIFs) — solo metadata textual en v1.
 
 Estas features quedan para iteraciones posteriores.
 
@@ -123,10 +134,18 @@ web/
     │       │   ├── page.tsx     ← lista de templates del coach
     │       │   ├── new/page.tsx
     │       │   └── [id]/page.tsx
-    │       └── plannings/
-    │           ├── page.tsx     ← lista
-    │           ├── new/page.tsx
-    │           └── [id]/page.tsx
+    │       ├── plannings/
+    │       │   ├── page.tsx     ← lista
+    │       │   ├── new/page.tsx
+    │       │   └── [id]/page.tsx
+    │       ├── exercises/
+    │       │   ├── page.tsx     ← lista "mis ejercicios" + buscador catálogo
+    │       │   ├── new/page.tsx
+    │       │   └── [id]/page.tsx
+    │       └── profile/
+    │           ├── page.tsx     ← ver
+    │           ├── edit/page.tsx
+    │           └── password/page.tsx
     ├── components/
     │   ├── ui/                  ← Button, Card, Input, Badge, Avatar, Table, Modal, Sidebar, Topbar, ThemeToggle, EmptyState, Skeleton, Pagination, StatCard
     │   ├── students/            ← StudentRow, StudentHeader, StudentTabs
@@ -254,8 +273,9 @@ adaptado a web.
 
 1. **Boot:** `AuthContext` lee `localStorage`. Si hay tokens, llama
    `GET /api/auth/me` para validar y refrescar `user`.
-2. **Login:** `POST /api/auth/login` con `{ email, password }` → guarda tokens y
-   user → redirect a `/`.
+2. **Login:** `POST /api/auth/login` con `{ identifier, password }` → guarda
+   tokens y user → redirect a `/`. El `identifier` acepta email **o** username
+   (igual que mobile — el backend resuelve cuál es).
 3. **Role gate:** wrapper `<RequireCoach>` en `(panel)/layout.tsx`:
    - Si no hay `user` → redirect a `/login`.
    - Si `user.role_id !== 2` → mensaje "Solo coaches pueden acceder al panel
@@ -313,6 +333,19 @@ adaptado a web.
 | Plannings (alumno)| `PUT /api/coaching/students/:studentId/plannings/:planningId/current-week`     | Avanzar semana                               |
 | Plannings (alumno)| `GET /api/coaching/students/:studentId/plannings/:planningId/weeks/:week/routines/:routineId/exercises` | Ejercicios de la semana    |
 | Plannings (alumno)| `PUT /api/coaching/students/:studentId/plannings/:planningId/weeks/:week/routines/:routineId/exercises` | Editar ejercicios de la semana |
+| Ejercicios        | `GET /api/exercises/search?q=&muscle_group=&page=`                             | Catálogo público (combobox al agregar a rutina) |
+| Ejercicios        | `GET /api/exercises/muscle-groups`                                             | Lista de grupos musculares                   |
+| Ejercicios        | `GET /api/exercises/mine`                                                      | Mis ejercicios custom                        |
+| Ejercicios        | `POST /api/exercises`                                                          | Crear ejercicio custom                       |
+| Ejercicios        | `PUT /api/exercises/:id`                                                       | Editar ejercicio custom                      |
+| Ejercicios        | `DELETE /api/exercises/:id`                                                    | Eliminar ejercicio custom                    |
+| Perfil            | `GET /api/auth/profile`                                                        | Perfil completo del usuario logueado         |
+| Perfil            | `PATCH /api/auth/profile`                                                      | Editar perfil (nombre, username, bio, etc.)  |
+| Perfil            | `POST /api/auth/change-password`                                               | Cambiar contraseña                           |
+| Perfil            | `POST /api/auth/avatar`                                                        | Upload avatar (multipart)                    |
+| Perfil            | `DELETE /api/auth/avatar`                                                      | Eliminar avatar                              |
+| Perfil            | `POST /api/auth/logout`                                                        | Logout server-side (invalida refresh)        |
+| Perfil            | `DELETE /api/auth/account`                                                     | Eliminar cuenta (con confirm)                |
 
 ---
 
@@ -482,7 +515,23 @@ Checklist breve. Detalles en `CLAUDE.md` raíz y `mobile/CLAUDE.md`.
 - `/routines` lista + crear + editar + asignar a alumnos.
 - `/plannings` lista + crear + editar + asignar a alumnos.
 
-### Fase 6+ — Iteraciones (out of v1 scope, no comprometido)
+### Fase 6 — Ejercicios personalizados
+
+- `/exercises` lista de "mis ejercicios" del coach + buscador del catálogo público.
+- `/exercises/new` crear ejercicio custom.
+- `/exercises/[id]` ver / editar / eliminar.
+- Picker de ejercicios reutilizado en el editor de rutinas.
+
+### Fase 7 — Perfil
+
+- `/profile` ver datos del coach (nombre, username, email, bio, avatar,
+  fecha de creación, plan, max_students).
+- `/profile/edit` editar perfil (PATCH).
+- `/profile/password` cambiar contraseña.
+- `/profile/avatar` upload / delete.
+- Acción peligrosa: eliminar cuenta (modal con confirm).
+
+### Fase 8+ — Iteraciones (out of v1 scope, no comprometido)
 
 - Templates coach.
 - Training groups.

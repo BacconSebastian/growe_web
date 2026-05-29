@@ -32,6 +32,10 @@ interface AuthContextValue {
   refreshing: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Refresca el user desde GET /auth/me y actualiza localStorage + estado */
+  refreshUser: () => Promise<void>;
+  /** Actualiza el user en estado + localStorage sin llamar al servidor */
+  setUser: (user: User) => void;
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -70,7 +74,7 @@ function clearStoredAuth(): void {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, _setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
@@ -80,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const bootedRef = useRef(false);
 
   const logout = useCallback(() => {
-    setUser(null);
+    _setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
     clearStoredAuth();
@@ -104,12 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Hidratar estado con tokens guardados antes de validar
     setAccessToken(stored.accessToken);
     setRefreshToken(stored.refreshToken);
-    setUser(stored.user);
+    _setUser(stored.user);
 
     // Validar token con el servidor
     getMe(stored.accessToken)
       .then((freshUser) => {
-        setUser(freshUser);
+        _setUser(freshUser);
         writeStoredAuth({
           user: freshUser,
           accessToken: stored.accessToken,
@@ -144,9 +148,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshToken: payload.refreshToken,
     };
     writeStoredAuth(auth);
-    setUser(payload.user);
+    _setUser(payload.user);
     setAccessToken(payload.accessToken);
     setRefreshToken(payload.refreshToken);
+  }, []);
+
+  /**
+   * Refresca el user desde GET /auth/me y actualiza localStorage + estado.
+   * Útil después de cambios en el perfil (avatar, nombre, etc.).
+   */
+  const refreshUser = useCallback(async (): Promise<void> => {
+    const stored = readStoredAuth();
+    if (!stored) return;
+    const freshUser = await getMe(stored.accessToken);
+    _setUser(freshUser);
+    writeStoredAuth({
+      user: freshUser,
+      accessToken: stored.accessToken,
+      refreshToken: stored.refreshToken,
+    });
+  }, []);
+
+  /**
+   * Actualiza el user en estado + localStorage sin llamar al servidor.
+   * Útil cuando el servidor ya devuelve el user actualizado (ej: uploadAvatar).
+   */
+  const setUserAndPersist = useCallback((newUser: User): void => {
+    _setUser(newUser);
+    const stored = readStoredAuth();
+    if (stored) {
+      writeStoredAuth({
+        user: newUser,
+        accessToken: stored.accessToken,
+        refreshToken: stored.refreshToken,
+      });
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -158,8 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshing,
       login,
       logout,
+      refreshUser,
+      setUser: setUserAndPersist,
     }),
-    [user, accessToken, refreshToken, initializing, refreshing, login, logout]
+    [user, accessToken, refreshToken, initializing, refreshing, login, logout, refreshUser, setUserAndPersist]
   );
 
   return (

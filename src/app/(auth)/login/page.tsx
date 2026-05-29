@@ -16,14 +16,9 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 // ─── Schema de validación ─────────────────────────────────────────────────────
 
 const loginSchema = z.object({
-  identifier: z
-    .string()
-    .min(1, "El email es requerido")
-    .email("Ingresá un email válido"),
-  password: z
-    .string()
-    .min(1, "La contraseña es requerida")
-    .min(6, "La contraseña debe tener al menos 6 caracteres"),
+  // Acepta email O username — el backend resuelve cuál es
+  identifier: z.string().trim().min(1, "Ingresá tu email o usuario"),
+  password: z.string().min(1, "Ingresá tu contraseña"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -66,7 +61,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (err) {
       setSubmitError(
         getErrorMessage(err, "Ocurrió un error al iniciar sesión. Intentá de nuevo.")
@@ -74,9 +69,9 @@ export default function LoginPage() {
     }
   };
 
-  // Si el usuario ya está logueado como coach, redirigir
+  // Si el usuario ya está logueado como coach, redirigir al dashboard
   if (user && isCoach(user)) {
-    router.replace("/");
+    router.replace("/dashboard");
     return null;
   }
 
@@ -191,13 +186,13 @@ export default function LoginPage() {
           noValidate
         >
           <Field
-            label="Email"
+            label="Email o usuario"
             error={errors.identifier?.message}
             inputProps={{
               ...register("identifier"),
-              type: "email",
+              type: "text",
               placeholder: "entrenador@growe.fit",
-              autoComplete: "email",
+              autoComplete: "username email",
               icon: <Mail size={16} />,
             }}
           />

@@ -27,7 +27,9 @@ export type CanonicalVariableKey =
   | 'weight_kg'
   | 'rir'
   | 'seconds'
+  | 'minutes'
   | 'distance_m'
+  | 'distance_km'
   | 'calories'
   | 'bricks'
   | 'rpe';

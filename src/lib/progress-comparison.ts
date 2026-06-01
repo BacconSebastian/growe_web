@@ -11,14 +11,16 @@ import { compareToRange } from "./range";
 import type { VariablesConfig } from "@/lib/api/types";
 
 export const PRIORITY_TABLE: ReadonlyArray<{ key: string; direction: 1 | -1 }> = Object.freeze([
-  { key: 'weight_kg',  direction:  1 },
-  { key: 'reps',       direction:  1 },
-  { key: 'seconds',    direction:  1 },
-  { key: 'distance_m', direction:  1 },
-  { key: 'rir',        direction:  1 },
-  { key: 'rpe',        direction: -1 },
-  { key: 'bricks',     direction:  1 },
-  { key: 'calories',   direction:  1 },
+  { key: 'weight_kg',   direction:  1 },
+  { key: 'reps',        direction:  1 },
+  { key: 'seconds',     direction:  1 },
+  { key: 'minutes',     direction:  1 },
+  { key: 'distance_m',  direction:  1 },
+  { key: 'distance_km', direction:  1 },
+  { key: 'rir',         direction:  1 },
+  { key: 'rpe',         direction: -1 },
+  { key: 'bricks',      direction:  1 },
+  { key: 'calories',    direction:  1 },
 ] as const);
 
 function _compareField(

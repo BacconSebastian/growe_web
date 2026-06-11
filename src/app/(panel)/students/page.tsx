@@ -1,80 +1,129 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { UserPlus, Users } from "lucide-react";
+import { UserPlus, Users, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { listStudents, type StudentListItem } from "@/lib/api/coaching";
 import { getErrorMessage, getUserInitials, getDisplayName } from "@/lib/utils";
-import { Table, TableHeader, TableRow, TableCell } from "@/components/ui/Table";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
-import { Chip } from "@/components/ui/Chip";
 import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { GradientSurface } from "@/components/ui/GradientSurface";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SkeletonLine, SkeletonCircle } from "@/components/ui/Skeleton";
 import { InviteStudentModal } from "@/components/students/InviteStudentModal";
 import type { PaginationMeta } from "@/lib/api/types";
 
-// ─── Skeleton de tabla ────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function TableSkeleton() {
-  return (
-    <Table>
-      <TableHeader>
-        <tr>
-          <TableCell as="th">Alumno</TableCell>
-          <TableCell as="th">Última actividad</TableCell>
-          <TableCell as="th">Planning activo</TableCell>
-          <TableCell as="th">Adherencia</TableCell>
-          <TableCell as="th">Racha</TableCell>
-          <TableCell as="th" />
-        </tr>
-      </TableHeader>
-      <tbody>
-        {[1, 2, 3, 4, 5].map((i) => (
-          <TableRow key={i}>
-            <TableCell>
-              <div className="flex items-center gap-md">
-                <SkeletonCircle size={36} />
-                <div className="flex flex-col gap-xs">
-                  <SkeletonLine width={120} height={14} />
-                  <SkeletonLine width={80} height={11} />
-                </div>
-              </div>
-            </TableCell>
-            <TableCell><SkeletonLine width={90} height={14} /></TableCell>
-            <TableCell><SkeletonLine width={110} height={14} /></TableCell>
-            <TableCell><SkeletonLine width={50} height={14} /></TableCell>
-            <TableCell><SkeletonLine width={40} height={14} /></TableCell>
-            <TableCell><SkeletonLine width={60} height={30} /></TableCell>
-          </TableRow>
-        ))}
-      </tbody>
-    </Table>
-  );
+/** Días enteros desde una fecha ISO. Devuelve null si la fecha es null. */
+function getDaysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
 }
 
-// ─── Fila de alumno ───────────────────────────────────────────────────────────
-
 function formatTimeAgo(dateStr: string | null): string {
-  if (!dateStr) return "Sin entrenos";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86_400_000);
-  if (days === 0) return "Hoy";
+  const days = getDaysSince(dateStr);
+  if (days === null) return "Sin entrenos";
+  if (days <= 0) return "Hoy";
   if (days === 1) return "Ayer";
   if (days < 7) return `Hace ${days} días`;
   if (days < 30) return `Hace ${Math.floor(days / 7)} sem.`;
   return `Hace ${Math.floor(days / 30)} mes(es)`;
 }
 
-interface StudentRowProps {
-  student: StudentListItem;
+/**
+ * Devuelve el label del badge de actividad con prefijo gramaticalmente
+ * correcto. "Sin entrenos" se pasa tal cual; el resto lleva prefijo.
+ */
+function formatActivityBadge(dateStr: string | null): string {
+  const raw = formatTimeAgo(dateStr);
+  if (raw === "Sin entrenos") return raw;
+  // "Hoy" / "Ayer" → minúscula directa
+  // "Hace …" → primera letra a minúscula
+  const lower = raw.charAt(0).toLowerCase() + raw.slice(1);
+  return `Última actividad ${lower}`;
 }
 
-function StudentRow({ student }: StudentRowProps) {
+/**
+ * Color del badge de actividad según días transcurridos:
+ * null → danger (rojo), 0-3 → success (verde), 4-7 → warning (naranja), >7 → danger (rojo).
+ */
+function getActivityBadgeVariant(
+  dateStr: string | null
+): "success" | "warning" | "danger" {
+  const days = getDaysSince(dateStr);
+  if (days === null) return "danger";
+  if (days <= 3) return "success";
+  if (days <= 7) return "warning";
+  return "danger";
+}
+
+/** Alto fijo de fila para filas uniformes. */
+const ROW_HEIGHT = 68;
+/** Alumnos por página. */
+const STUDENTS_PER_PAGE = 7;
+
+// ─── Skeleton ───────────────────────────────────────────────────────────────
+
+function ListSkeleton() {
+  const rows = Array.from({ length: STUDENTS_PER_PAGE }, (_, i) => i);
+  return (
+    <GradientSurface>
+      {/* Filas — misma minHeight total que el contenedor de filas real */}
+      <div
+        className="flex flex-col"
+        style={{ minHeight: ROW_HEIGHT * STUDENTS_PER_PAGE }}
+      >
+        {rows.map((i) => (
+          <div
+            key={i}
+            className="flex items-center gap-md px-xl"
+            style={{
+              height: ROW_HEIGHT,
+              ...(i < STUDENTS_PER_PAGE - 1
+                ? { borderBottom: "1px solid var(--separator-subtle)" }
+                : {}),
+            }}
+          >
+            <SkeletonCircle size={40} />
+            <div className="flex flex-col gap-xs flex-1">
+              <SkeletonLine width={140} height={14} />
+              <div className="flex gap-xs">
+                <SkeletonLine width={120} height={18} className="rounded-pill" />
+                <SkeletonLine width={100} height={18} className="rounded-pill" />
+              </div>
+            </div>
+            <SkeletonLine width={72} height={30} />
+          </div>
+        ))}
+      </div>
+
+      {/* Shell de paginación — espeja el padding/altura real de <Pagination> */}
+      <div
+        className="flex items-center justify-between gap-lg py-md px-lg"
+        style={{ borderTop: "1px solid var(--separator-subtle)" }}
+      >
+        <SkeletonLine width={80} height={14} />
+        <div className="flex items-center gap-sm">
+          <SkeletonLine width={84} height={30} className="rounded-pill" />
+          <SkeletonLine width={90} height={30} className="rounded-pill" />
+        </div>
+      </div>
+    </GradientSurface>
+  );
+}
+
+// ─── Fila de alumno ───────────────────────────────────────────────────────────
+
+interface StudentRowProps {
+  student: StudentListItem;
+  isLast: boolean;
+}
+
+function StudentRow({ student, isLast }: StudentRowProps) {
   const displayName = getDisplayName({
     first_name: student.first_name,
     last_name: student.last_name,
@@ -87,73 +136,63 @@ function StudentRow({ student }: StudentRowProps) {
   });
 
   return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-md">
-          <Avatar src={student.avatar_url} initials={initials} size="md" />
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-fg">{displayName}</span>
-            {student.email && (
-              <span className="text-xs text-fg-tertiary">{student.email}</span>
-            )}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="flex flex-col gap-xs">
-          <span className="text-sm text-fg">
-            {formatTimeAgo(student.last_workout_at)}
-          </span>
-          {student.needs_attention && (
-            <Badge variant="warning" size="sm">Necesita atención</Badge>
-          )}
-        </div>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-fg">
-          {student.active_planning_title ?? (
-            <span className="text-fg-tertiary">Sin planning</span>
-          )}
-        </span>
-      </TableCell>
-      <TableCell>
-        {student.weekly_adherence_percentage !== null ? (
-          <span
-            className="text-sm font-semibold"
-            style={{
-              color:
-                student.weekly_adherence_percentage >= 70
-                  ? "var(--success)"
-                  : student.weekly_adherence_percentage >= 40
-                  ? "var(--warning)"
-                  : "var(--destructive)",
-            }}
+    <div
+      className="flex items-center gap-md px-xl transition-colors duration-100 hover:bg-fill-tertiary"
+      style={{
+        minHeight: ROW_HEIGHT,
+        ...(isLast
+          ? {}
+          : { borderBottom: "1px solid var(--separator-subtle)" }),
+      }}
+    >
+      <Avatar src={student.avatar_url} initials={initials} size="md" />
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-fg m-0 truncate">{displayName}</p>
+        <div className="flex items-center gap-xs mt-xxs flex-wrap">
+          <Badge variant={getActivityBadgeVariant(student.last_workout_at)} size="sm">
+            {formatActivityBadge(student.last_workout_at)}
+          </Badge>
+          <Badge
+            variant={student.active_planning_title ? "neutral" : "danger"}
+            size="sm"
           >
-            {Math.round(student.weekly_adherence_percentage)}%
-          </span>
-        ) : (
-          <span className="text-sm text-fg-tertiary">—</span>
+            {student.active_planning_title
+              ? `Planificación asignada: ${student.active_planning_title}`
+              : "Sin planificación"}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Stats — se ocultan en pantallas chicas */}
+      <div className="hidden md:flex items-center gap-lg flex-shrink-0">
+        {student.needs_attention && (
+          <Badge variant="danger" size="sm">
+            Atención
+          </Badge>
         )}
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-fg">
-          {student.current_streak > 0 ? `${student.current_streak}🔥` : "0"}
-        </span>
-      </TableCell>
-      <TableCell align="right">
-        <Link href={`/students/${student.id}`}>
-          <Button variant="outline" size="sm">
-            Ver
-          </Button>
-        </Link>
-      </TableCell>
-    </TableRow>
+
+        {student.current_streak > 0 && (
+          <span
+            className="text-sm font-medium text-fg-secondary tabular-nums"
+            title="Racha actual"
+          >
+            🔥 {student.current_streak}
+          </span>
+        )}
+      </div>
+
+      <Link
+        href={`/students/${student.id}`}
+        className="no-underline flex-shrink-0"
+      >
+        <Button variant="secondary" size="sm" iconRight={<ChevronRight size={14} />}>
+          Ver perfil
+        </Button>
+      </Link>
+    </div>
   );
 }
-
-// ─── Filtros chip ─────────────────────────────────────────────────────────────
-
-type FilterChip = "todos" | "activos" | "atencion";
 
 // ─── Página de alumnos ────────────────────────────────────────────────────────
 
@@ -169,7 +208,6 @@ export default function StudentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<FilterChip>("todos");
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,7 +216,11 @@ export default function StudentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await listStudents({ page: currentPage, search: searchQuery || undefined });
+      const res = await listStudents({
+        page: currentPage,
+        search: searchQuery || undefined,
+        limit: STUDENTS_PER_PAGE,
+      });
       setStudents(res.items);
       setPagination(res.pagination);
     } catch (err) {
@@ -205,116 +247,88 @@ export default function StudentsPage() {
     loadStudents(search, page);
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filtrado client-side según chip
-  const filteredStudents = students.filter((s) => {
-    if (filter === "activos") return s.workouts_this_week > 0;
-    if (filter === "atencion") return s.needs_attention;
-    return true;
-  });
-
-  const isEmpty = !loading && filteredStudents.length === 0;
+  const isEmpty = !loading && students.length === 0;
 
   return (
-    <div className="flex flex-col gap-xl">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-lg flex-wrap">
-        <div>
-          <h1
-            className="text-display font-bold tracking-tight"
-            style={{ margin: 0, letterSpacing: "-0.4px" }}
-          >
-            Alumnos
-          </h1>
-          <p className="text-base text-fg-secondary mt-xs m-0">
-            Gestioná tu plantel de alumnos
-          </p>
-        </div>
+    <div className="flex flex-col gap-lg">
+      {error && <ErrorBanner message={error} dismissible />}
+
+      {/* Controles: buscador + invitar, en una sola línea */}
+      <div className="flex items-center gap-md">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nombre o email..."
+          className="w-72 flex-shrink-0"
+        />
+
         <Button
           variant="primary"
-          size="md"
+          size="sm"
           iconLeft={<UserPlus size={16} />}
           onClick={() => setInviteOpen(true)}
+          className="ml-auto flex-shrink-0"
         >
           Invitar alumno
         </Button>
       </div>
 
-      {error && <ErrorBanner message={error} dismissible />}
-
-      {/* Controles */}
-      <div className="flex items-center gap-md flex-wrap">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar por nombre o email..."
-          className="w-full max-w-xs"
-        />
-        <div className="flex items-center gap-sm">
-          <Chip active={filter === "todos"} onClick={() => setFilter("todos")}>
-            Todos
-          </Chip>
-          <Chip active={filter === "activos"} onClick={() => setFilter("activos")}>
-            Activos esta semana
-          </Chip>
-          <Chip active={filter === "atencion"} onClick={() => setFilter("atencion")}>
-            Necesitan atención
-          </Chip>
-        </div>
-      </div>
-
-      {/* Tabla / estados */}
+      {/* Lista de alumnos */}
       {loading ? (
-        <TableSkeleton />
-      ) : isEmpty ? (
-        <EmptyState
-          icon={<Users size={24} />}
-          title={search ? "Sin resultados" : "No tenés alumnos aún"}
-          description={
-            search
-              ? "Probá con otro nombre o email."
-              : "Invitá a tus primeros alumnos para empezar a gestionarlos desde acá."
-          }
-          action={
-            !search ? (
-              <Button
-                variant="primary"
-                iconLeft={<UserPlus size={16} />}
-                onClick={() => setInviteOpen(true)}
-              >
-                Invitar alumno
-              </Button>
-            ) : undefined
-          }
-        />
+        <ListSkeleton />
       ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <tr>
-                <TableCell as="th">Alumno</TableCell>
-                <TableCell as="th">Última actividad</TableCell>
-                <TableCell as="th">Planning activo</TableCell>
-                <TableCell as="th">Adherencia</TableCell>
-                <TableCell as="th">Racha</TableCell>
-                <TableCell as="th" />
-              </tr>
-            </TableHeader>
-            <tbody>
-              {filteredStudents.map((student) => (
-                <StudentRow key={student.id} student={student} />
-              ))}
-            </tbody>
-          </Table>
+        <GradientSurface>
+          <div
+            className="flex flex-col"
+            style={{ minHeight: ROW_HEIGHT * STUDENTS_PER_PAGE }}
+          >
+            {isEmpty ? (
+              <div
+                className="flex flex-col items-center justify-center gap-sm px-xl text-center"
+                style={{ minHeight: ROW_HEIGHT * STUDENTS_PER_PAGE }}
+              >
+                <Users size={28} style={{ color: "var(--fg-tertiary)" }} />
+                <p className="text-base font-medium text-fg m-0">
+                  {search ? "Sin resultados" : "No tenés alumnos aún"}
+                </p>
+                <p className="text-sm text-fg-secondary m-0">
+                  {search
+                    ? "Probá con otro nombre o email."
+                    : "Invitá a tus primeros alumnos para gestionarlos desde acá."}
+                </p>
+                {!search && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    iconLeft={<UserPlus size={16} />}
+                    onClick={() => setInviteOpen(true)}
+                    className="mt-sm"
+                  >
+                    Invitar alumno
+                  </Button>
+                )}
+              </div>
+            ) : (
+              students.map((student, idx) => (
+                <StudentRow
+                  key={student.id}
+                  student={student}
+                  isLast={idx === students.length - 1}
+                />
+              ))
+            )}
+          </div>
 
-          {pagination.total_pages > 1 && (
+          {/* Paginación — mismo componente que el dashboard, siempre visible */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
             <Pagination
               page={pagination.page}
               perPage={pagination.per_page}
               total={pagination.total}
               onPageChange={setPage}
             />
-          )}
-        </>
+          </div>
+        </GradientSurface>
       )}
 
       <InviteStudentModal

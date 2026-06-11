@@ -14,18 +14,34 @@ import { StudentRoutinesTab } from "@/components/students/StudentRoutinesTab";
 import { StudentPlanningsTab } from "@/components/students/StudentPlanningsTab";
 import { StudentMonthlyReportTab } from "@/components/students/StudentMonthlyReportTab";
 import { StudentHistoryTab } from "@/components/students/StudentHistoryTab";
+import { StudentProgressTab } from "@/components/coaching/progress/StudentProgressTab";
+import { StudentWeeklyProgress } from "@/components/coaching/StudentWeeklyProgress";
+import { ProgressionRulesPanel } from "@/components/coaching/ProgressionRulesPanel";
+import { CoachNotesModal } from "@/components/coaching/CoachNotesModal";
+import { StudentSettingsModal } from "@/components/coaching/StudentSettingsModal";
 import type { User } from "@/lib/api/types";
 
 // ─── Tipos de tabs ─────────────────────────────────────────────────────────
 
-type TabId = "resumen" | "rutinas" | "planificaciones" | "reporte" | "historial";
+type TabId =
+  | "resumen"
+  | "rutinas"
+  | "planificaciones"
+  | "progreso"
+  | "semanal"
+  | "reporte"
+  | "historial"
+  | "progresion";
 
 const TABS = [
   { id: "resumen" as TabId,           label: "Resumen" },
   { id: "rutinas" as TabId,           label: "Rutinas" },
   { id: "planificaciones" as TabId,   label: "Planificaciones" },
+  { id: "progreso" as TabId,          label: "Progreso" },
+  { id: "semanal" as TabId,           label: "Semanal" },
   { id: "reporte" as TabId,           label: "Reporte mensual" },
   { id: "historial" as TabId,         label: "Historial" },
+  { id: "progresion" as TabId,        label: "Progresión" },
 ];
 
 // ─── Skeleton del header ──────────────────────────────────────────────────
@@ -69,6 +85,8 @@ export default function StudentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("resumen");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!studentId) return;
@@ -101,7 +119,12 @@ export default function StudentDetailPage() {
       ) : error ? (
         <ErrorBanner message={error} />
       ) : student ? (
-        <StudentHeader student={student} onShowReport={handleShowReport} />
+        <StudentHeader
+          student={student}
+          onShowReport={handleShowReport}
+          onOpenNotes={() => setNotesOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
       ) : null}
 
       {/* Tabs */}
@@ -123,14 +146,43 @@ export default function StudentDetailPage() {
             {activeTab === "planificaciones" && (
               <StudentPlanningsTab studentId={studentId} />
             )}
+            {activeTab === "progreso" && (
+              <StudentProgressTab studentId={studentId} />
+            )}
+            {activeTab === "semanal" && (
+              <StudentWeeklyProgress studentId={studentId} />
+            )}
             {activeTab === "reporte" && (
               <StudentMonthlyReportTab studentId={studentId} />
             )}
             {activeTab === "historial" && (
               <StudentHistoryTab studentId={studentId} />
             )}
+            {activeTab === "progresion" && (
+              <ProgressionRulesPanel studentId={studentId} />
+            )}
           </div>
         </>
+      )}
+
+      {/* Modal de notas y preguntas del coach */}
+      {student && (
+        <CoachNotesModal
+          open={notesOpen}
+          onClose={() => setNotesOpen(false)}
+          studentId={studentId}
+          studentName={student.first_name ?? student.username}
+        />
+      )}
+
+      {/* Modal de ajustes del alumno (umbral de inactividad) */}
+      {student && (
+        <StudentSettingsModal
+          open={settingsOpen}
+          studentId={studentId}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => setSettingsOpen(false)}
+        />
       )}
     </div>
   );

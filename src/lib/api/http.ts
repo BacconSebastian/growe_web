@@ -40,6 +40,12 @@ export interface FetchOptions extends RequestInit {
   accessToken?: string;
   /** Si true, no intenta refresh en 401 (evita loops). */
   skipRefresh?: boolean;
+  /**
+   * Si true, devuelve el envelope completo `{ success, data, ... }` en vez de
+   * solo `data`. Necesario para endpoints que ponen `pagination`/`totalMembers`
+   * como hermanos de `data` (ej. GET /coaching/groups).
+   */
+  rawEnvelope?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -146,6 +152,7 @@ export async function httpFetch<T>(input: string, init?: FetchOptions): Promise<
     timeoutMs = DEFAULT_TIMEOUT_MS,
     accessToken: explicitToken,
     skipRefresh = false,
+    rawEnvelope = false,
     headers,
     signal: externalSignal,
     ...rest
@@ -219,6 +226,10 @@ export async function httpFetch<T>(input: string, init?: FetchOptions): Promise<
 
   if (!("success" in body) || !body.success) {
     throw new ApiError("Respuesta de API inesperada", response.status, body);
+  }
+
+  if (rawEnvelope) {
+    return body as unknown as T;
   }
 
   return ("data" in body ? body.data : undefined) as T;

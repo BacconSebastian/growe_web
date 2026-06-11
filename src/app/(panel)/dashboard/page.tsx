@@ -1,53 +1,70 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Users,
-  Dumbbell,
-  CalendarDays,
   Activity,
-  UserPlus,
+  UserX,
+  CalendarOff,
   CheckCircle,
-  XCircle,
-  Download,
-  ChevronRight,
 } from "lucide-react";
-import Link from "next/link";
-import { useAuth } from "@/contexts/AuthContext";
-import { getDisplayName, getErrorMessage, getUserInitials } from "@/lib/utils";
+import { getErrorMessage, getUserInitials } from "@/lib/utils";
 import {
   getCoachDashboard,
   getCoachDashboardMetrics,
+  getCoachAttention,
   listCoachingRequests,
   respondCoachingRequest,
   type CoachDashboardData,
   type CoachDashboardMetrics,
   type CoachingRequestsResponse,
+  type CoachAttentionResponse,
 } from "@/lib/api/coaching";
+import { listRoutines } from "@/lib/api/routines";
+import { listPlannings } from "@/lib/api/plannings";
+import { NeedsAttentionCard } from "@/components/coaching/NeedsAttentionCard";
+import { DraftsCard, type DraftItem } from "@/components/coaching/DraftsCard";
+import {
+  MetricDetailModal,
+  type MetricDetailItem,
+} from "@/components/coaching/MetricDetailModal";
 import { StatCard } from "@/components/ui/StatCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { SkeletonLine, SkeletonCircle, SkeletonBox } from "@/components/ui/Skeleton";
-import { InviteStudentModal } from "@/components/students/InviteStudentModal";
+import { SkeletonBox } from "@/components/ui/Skeleton";
+import { GradientSurface } from "@/components/ui/GradientSurface";
+import { Pagination } from "@/components/ui/Pagination";
+import { OutgoingRequestsList } from "@/components/coaching/OutgoingRequestsList";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Formato relativo "Hace X días" a partir de una fecha ISO. */
+function formatTimeAgo(dateStr: string | null): string {
+  if (!dateStr) return "Sin entrenamientos";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86_400_000);
+  if (days <= 0) return "Hoy";
+  if (days === 1) return "Ayer";
+  if (days < 7) return `Hace ${days} días`;
+  if (days < 30) return `Hace ${Math.floor(days / 7)} sem.`;
+  return `Hace ${Math.floor(days / 30)} mes(es)`;
+}
+
+/** Métricas con detalle clickeable. */
+type MetricKey = "total" | "active" | "inactive" | "no_planning";
+
+/** Solicitudes pendientes por página. */
+const PENDING_PER_PAGE = 2;
+/** Alto mínimo del cuerpo de solicitudes (≈ 2 filas) para tamaño constante. */
+const PENDING_BODY_MIN_HEIGHT = 152;
 
 // ─── Skeleton del dashboard ──────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-xxl">
-      <div className="flex items-end justify-between gap-lg flex-wrap">
-        <div className="flex flex-col gap-sm">
-          <SkeletonLine width={240} height={32} />
-          <SkeletonLine width={180} height={16} />
-        </div>
-        <div className="flex gap-sm">
-          <SkeletonBox width={140} height={40} />
-          <SkeletonBox width={140} height={40} />
-        </div>
-      </div>
-
+    <div className="flex flex-col gap-lg">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-lg">
         {[1, 2, 3, 4].map((i) => (
           <SkeletonBox key={i} height={100} />
@@ -67,20 +84,23 @@ function DashboardSkeleton() {
 interface RequestCardProps {
   requests: CoachingRequestsResponse["incoming"];
   onRespond: (id: number, accepted: boolean) => Promise<void>;
+  className?: string;
 }
 
-function PendingRequestsCard({ requests, onRespond }: RequestCardProps) {
+function PendingRequestsCard({ requests, onRespond, className }: RequestCardProps) {
   const pending = requests.filter((r) => r.status === "pending");
+  const [page, setPage] = useState(1);
+
+  const total = pending.length;
+  const totalPages = Math.max(1, Math.ceil(total / PENDING_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const visible = pending.slice(
+    (currentPage - 1) * PENDING_PER_PAGE,
+    currentPage * PENDING_PER_PAGE
+  );
 
   return (
-    <div
-      className="flex flex-col rounded-lg"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--card-border)",
-        boxShadow: "var(--shadow-card)",
-      }}
-    >
+    <GradientSurface className={className}>
       <div
         className="flex items-center justify-between px-xl py-lg"
         style={{ borderBottom: "1px solid var(--separator-subtle)" }}
@@ -88,23 +108,26 @@ function PendingRequestsCard({ requests, onRespond }: RequestCardProps) {
         <h2 className="text-base font-semibold text-fg m-0">
           Solicitudes pendientes
         </h2>
-        {pending.length > 0 && (
+        {total > 0 && (
           <Badge variant="warning" size="sm">
-            {pending.length}
+            {total}
           </Badge>
         )}
       </div>
 
-      <div className="flex flex-col">
-        {pending.length === 0 ? (
-          <div className="flex flex-col items-center gap-sm px-xl py-xxl text-center">
+      <div
+        className="flex flex-col"
+        style={{ minHeight: PENDING_BODY_MIN_HEIGHT }}
+      >
+        {total === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-sm px-xl py-xxl text-center">
             <CheckCircle size={28} style={{ color: "var(--success)" }} />
             <p className="text-sm text-fg-secondary m-0">
               No tenés solicitudes pendientes
             </p>
           </div>
         ) : (
-          pending.slice(0, 5).map((req, idx) => {
+          visible.map((req, idx) => {
             const sender = req.sender;
             const name = sender
               ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() ||
@@ -123,7 +146,7 @@ function PendingRequestsCard({ requests, onRespond }: RequestCardProps) {
                 key={req.id}
                 className="flex items-center gap-md px-xl py-lg"
                 style={
-                  idx < pending.length - 1
+                  idx < visible.length - 1
                     ? { borderBottom: "1px solid var(--separator-subtle)" }
                     : undefined
                 }
@@ -164,228 +187,56 @@ function PendingRequestsCard({ requests, onRespond }: RequestCardProps) {
           })
         )}
       </div>
-    </div>
-  );
-}
 
-// ─── Card de alumnos recientes ───────────────────────────────────────────────
-
-interface RecentStudentsCardProps {
-  students: CoachDashboardData["students"];
-}
-
-function RecentStudentsCard({ students }: RecentStudentsCardProps) {
-  const recent = students.slice(0, 5);
-
-  function formatTimeAgo(dateStr: string | null): string {
-    if (!dateStr) return "Sin entrenamientos";
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const days = Math.floor(diff / 86_400_000);
-    if (days === 0) return "Hoy";
-    if (days === 1) return "Ayer";
-    if (days < 7) return `Hace ${days} días`;
-    if (days < 30) return `Hace ${Math.floor(days / 7)} sem.`;
-    return `Hace ${Math.floor(days / 30)} mes(es)`;
-  }
-
-  return (
-    <div
-      className="flex flex-col rounded-lg lg:col-span-2"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--card-border)",
-        boxShadow: "var(--shadow-card)",
-      }}
-    >
-      <div
-        className="flex items-center justify-between px-xl py-lg"
-        style={{ borderBottom: "1px solid var(--separator-subtle)" }}
-      >
-        <h2 className="text-base font-semibold text-fg m-0">
-          Alumnos recientes
-        </h2>
-        <Link
-          href="/students"
-          className="text-sm text-primary font-medium no-underline flex items-center gap-xxs hover:opacity-80 transition-opacity"
-        >
-          Ver todos
-          <ChevronRight size={14} />
-        </Link>
+      {/* Paginación — siempre visible (deshabilitada si hay una sola página) */}
+      <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+        <Pagination
+          page={currentPage}
+          perPage={PENDING_PER_PAGE}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
-
-      <div className="flex flex-col">
-        {recent.length === 0 ? (
-          <div className="flex flex-col items-center gap-sm px-xl py-xxl text-center">
-            <Users size={28} style={{ color: "var(--fg-tertiary)" }} />
-            <p className="text-sm text-fg-secondary m-0">
-              Todavía no tenés alumnos
-            </p>
-          </div>
-        ) : (
-          recent.map((student, idx) => {
-            const name = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || student.username;
-            const initials = getUserInitials({
-              first_name: student.first_name,
-              last_name: student.last_name,
-              username: student.username,
-            });
-            const adherence = student.weekly_adherence_percentage;
-
-            return (
-              <Link
-                key={student.id}
-                href={`/students/${student.id}`}
-                className="no-underline"
-              >
-                <div
-                  className="flex items-center gap-md px-xl py-lg transition-colors duration-100 cursor-pointer"
-                  style={
-                    idx < recent.length - 1
-                      ? { borderBottom: "1px solid var(--separator-subtle)" }
-                      : undefined
-                  }
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = "var(--fill-quaternary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = "";
-                  }}
-                >
-                  <Avatar
-                    src={student.avatar_url}
-                    initials={initials}
-                    size="md"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-fg m-0 truncate">
-                      {name}
-                    </p>
-                    <p className="text-xs text-fg-tertiary m-0">
-                      {formatTimeAgo(student.last_workout_at)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-md flex-shrink-0">
-                    {student.needs_attention && (
-                      <Badge variant="warning" size="sm">
-                        Atención
-                      </Badge>
-                    )}
-                    {adherence !== null && (
-                      <span className="text-sm font-semibold text-fg-secondary">
-                        {Math.round(adherence)}%
-                      </span>
-                    )}
-                    <span className="text-xs text-fg-tertiary">
-                      {student.workouts_this_week}
-                      {" "}ent./sem.
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Quick Access Cards ───────────────────────────────────────────────────────
-
-function QuickAccessCards() {
-  const cards = [
-    {
-      href: "/students",
-      label: "Alumnos",
-      description: "Gestioná tu plantel",
-      icon: <Users size={18} />,
-      iconBg: "var(--primary-alpha-16)",
-      iconColor: "var(--primary)",
-    },
-    {
-      href: "/routines",
-      label: "Rutinas",
-      description: "Mis plantillas",
-      icon: <Dumbbell size={18} />,
-      iconBg: "var(--warning-alpha-20)",
-      iconColor: "var(--warning)",
-    },
-    {
-      href: "/plannings",
-      label: "Planificaciones",
-      description: "Ciclos y semanas",
-      icon: <CalendarDays size={18} />,
-      iconBg: "var(--purple-alpha-16)",
-      iconColor: "var(--purple)",
-    },
-  ];
-
-  return (
-    <div
-      className="flex flex-col rounded-lg"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--card-border)",
-        boxShadow: "var(--shadow-card)",
-      }}
-    >
-      <div
-        className="px-xl py-lg"
-        style={{ borderBottom: "1px solid var(--separator-subtle)" }}
-      >
-        <h2 className="text-base font-semibold text-fg m-0">Accesos rápidos</h2>
-      </div>
-      <div className="flex flex-col gap-sm p-xl">
-        {cards.map((card) => (
-          <Link key={card.href} href={card.href} className="no-underline">
-            <div
-              className="relative flex items-center gap-md p-lg rounded-md overflow-hidden cursor-pointer transition-opacity duration-150 hover:opacity-90"
-              style={{
-                background: "var(--fill-tertiary)",
-              }}
-            >
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))",
-                }}
-              />
-              <div
-                className="relative w-9 h-9 rounded-pill flex items-center justify-center flex-shrink-0"
-                style={{ background: card.iconBg, color: card.iconColor }}
-              >
-                {card.icon}
-              </div>
-              <div className="relative min-w-0">
-                <p className="text-sm font-semibold text-fg m-0">{card.label}</p>
-                <p className="text-xs text-fg-secondary m-0">{card.description}</p>
-              </div>
-              <ChevronRight
-                size={14}
-                className="relative ml-auto text-fg-tertiary flex-shrink-0"
-              />
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+    </GradientSurface>
   );
 }
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const displayName = user ? getDisplayName(user).split(" ")[0] : "Coach";
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<CoachDashboardData | null>(null);
   const [metrics, setMetrics] = useState<CoachDashboardMetrics | null>(null);
   const [requests, setRequests] = useState<CoachingRequestsResponse | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [attention, setAttention] = useState<CoachAttentionResponse | null>(null);
+  const [drafts, setDrafts] = useState<DraftItem[]>([]);
+  const [openMetric, setOpenMetric] = useState<MetricKey | null>(null);
+
+  // Best-effort: trae rutinas y planificaciones en estado borrador del coach.
+  const loadDrafts = useCallback(async () => {
+    try {
+      const [draftRoutines, draftPlannings] = await Promise.all([
+        listRoutines({ status: "draft" }),
+        listPlannings({ status: "draft" }),
+      ]);
+      const items: DraftItem[] = [
+        ...draftRoutines.items.map((r) => ({
+          type: "routine" as const,
+          id: r.id,
+          title: r.title,
+        })),
+        ...draftPlannings.items.map((p) => ({
+          type: "planning" as const,
+          id: p.id,
+          title: p.title,
+        })),
+      ];
+      setDrafts(items);
+    } catch {
+      setDrafts([]);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -404,19 +255,78 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // "Necesitan atención" es best-effort: si el endpoint no está disponible
+    // (backend sin deploy) no debe tumbar el resto del dashboard.
+    try {
+      setAttention(await getCoachAttention());
+    } catch {
+      setAttention(null);
+    }
+    loadDrafts();
+  }, [loadDrafts]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  // Items detrás de la métrica abierta (derivados de datos ya cargados).
+  const metricModal = useMemo<{ title: string; items: MetricDetailItem[] } | null>(() => {
+    if (!openMetric) return null;
+
+    const students = dashboard?.students ?? [];
+    const toItem = (s: CoachDashboardData["students"][number]): MetricDetailItem => ({
+      id: s.id,
+      name: `${s.first_name ?? ""} ${s.last_name ?? ""}`.trim() || s.username,
+      initials: getUserInitials({
+        first_name: s.first_name,
+        last_name: s.last_name,
+        username: s.username,
+      }),
+      avatar_url: s.avatar_url,
+      detail: formatTimeAgo(s.last_workout_at),
+    });
+
+    switch (openMetric) {
+      case "total":
+        return { title: "Total de alumnos", items: students.map(toItem) };
+      case "active":
+        return {
+          title: "Activos esta semana",
+          items: students.filter((s) => s.current_streak > 0).map(toItem),
+        };
+      case "inactive":
+        return {
+          title: "Inactivos esta semana",
+          items: students.filter((s) => s.current_streak === 0).map(toItem),
+        };
+      case "no_planning":
+        return {
+          title: "Usuarios sin planificación",
+          items: (attention?.students ?? [])
+            .filter((s) => s.without_planning)
+            .map((s) => ({
+              id: s.id,
+              name:
+                `${s.first_name ?? ""} ${s.last_name ?? ""}`.trim() || s.username,
+              initials: getUserInitials({
+                first_name: s.first_name,
+                last_name: s.last_name,
+                username: s.username,
+              }),
+              avatar_url: s.avatar_url,
+              detail: formatTimeAgo(s.last_workout_at),
+            })),
+        };
+    }
+  }, [openMetric, dashboard, attention]);
+
   const handleRespond = async (requestId: number, accepted: boolean) => {
     try {
-      await respondCoachingRequest(requestId, accepted);
+      await respondCoachingRequest(requestId, accepted ? "accept" : "decline");
       // Refrescar solicitudes
       const reqs = await listCoachingRequests();
       setRequests(reqs);
-      // Si aceptó, refrescar dashboard para ver el nuevo alumno
+      // Si aceptó, refrescar dashboard, métricas y atención para ver el nuevo alumno
       if (accepted) {
         const [dash, met] = await Promise.all([
           getCoachDashboard(),
@@ -424,6 +334,11 @@ export default function DashboardPage() {
         ]);
         setDashboard(dash);
         setMetrics(met);
+        try {
+          setAttention(await getCoachAttention());
+        } catch {
+          /* best-effort: no romper el flujo de aceptar solicitud */
+        }
       }
     } catch (err) {
       setError(getErrorMessage(err, "No se pudo responder la solicitud"));
@@ -433,40 +348,7 @@ export default function DashboardPage() {
   if (loading) return <DashboardSkeleton />;
 
   return (
-    <div className="flex flex-col gap-xxl">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-lg flex-wrap">
-        <div>
-          <h1
-            className="text-display font-bold tracking-tight"
-            style={{ margin: 0, letterSpacing: "-0.4px" }}
-          >
-            Hola, {displayName}
-          </h1>
-          <p className="text-base text-fg-secondary mt-xs m-0">
-            Resumen de tu plantel
-          </p>
-        </div>
-        <div className="flex gap-sm flex-shrink-0">
-          <Button
-            variant="secondary"
-            size="md"
-            iconLeft={<Download size={16} />}
-            onClick={() => alert("Exportar reporte — próximamente")}
-          >
-            Exportar reporte
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            iconLeft={<UserPlus size={16} />}
-            onClick={() => setInviteOpen(true)}
-          >
-            Invitar alumno
-          </Button>
-        </div>
-      </div>
-
+    <div className="flex flex-col gap-lg">
       {error && <ErrorBanner message={error} dismissible />}
 
       {/* Stat Cards */}
@@ -476,55 +358,66 @@ export default function DashboardPage() {
           value={metrics?.total_students ?? dashboard?.total_students ?? 0}
           icon={<Users size={18} />}
           iconColorClass="text-primary"
+          onClick={() => setOpenMetric("total")}
         />
         <StatCard
           label="Activos esta semana"
           value={metrics?.students_active_this_week ?? 0}
           icon={<Activity size={18} />}
           iconColorClass="text-success"
+          onClick={() => setOpenMetric("active")}
         />
         <StatCard
-          label="Rutinas creadas"
-          value={metrics?.total_routines ?? "—"}
-          icon={<Dumbbell size={18} />}
+          label="Inactivos esta semana"
+          value={metrics?.students_inactive_count ?? 0}
+          icon={<UserX size={18} />}
           iconColorClass="text-warning"
+          onClick={() => setOpenMetric("inactive")}
         />
         <StatCard
-          label="Plannings activos"
-          value={metrics?.active_plannings ?? "—"}
-          icon={<CalendarDays size={18} />}
+          label="Usuarios sin planificación"
+          value={metrics?.students_without_planning ?? 0}
+          icon={<CalendarOff size={18} />}
           iconColorClass="text-purple"
+          onClick={() => setOpenMetric("no_planning")}
         />
       </div>
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg">
-        {/* Solicitudes + Quick Access */}
-        <div className="flex flex-col gap-lg">
+        {/* Solicitudes — justify-between reparte el espacio sobrante para que el
+            borde inferior quede alineado con "Necesitan atención" */}
+        <div className="flex flex-col gap-lg justify-between">
           {requests && (
             <PendingRequestsCard
               requests={requests.incoming}
               onRespond={handleRespond}
             />
           )}
-          <QuickAccessCards />
+          {requests && requests.outgoing.some((r) => r.status === "pending") && (
+            <OutgoingRequestsList
+              requests={requests.outgoing}
+              onCancelled={loadData}
+            />
+          )}
+          <DraftsCard items={drafts} />
         </div>
 
-        {/* Alumnos recientes */}
-        {dashboard && (
-          <RecentStudentsCard students={dashboard.students} />
+        {/* Necesitan atención */}
+        {attention && (
+          <NeedsAttentionCard students={attention.students} />
         )}
       </div>
 
-      {/* Modal invitar */}
-      <InviteStudentModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        onSuccess={() => {
-          setInviteOpen(false);
-          loadData();
-        }}
-      />
+      {/* Modal de detalle de métrica */}
+      {metricModal && (
+        <MetricDetailModal
+          open={openMetric !== null}
+          onClose={() => setOpenMetric(null)}
+          title={metricModal.title}
+          items={metricModal.items}
+        />
+      )}
     </div>
   );
 }

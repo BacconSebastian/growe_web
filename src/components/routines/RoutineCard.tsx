@@ -11,6 +11,9 @@ interface RoutineCardProps {
   href: string;
 }
 
+/** Alto fijo de la card (px) — todas las cards miden lo mismo. */
+export const ROUTINE_CARD_HEIGHT = 176;
+
 const DAY_LABELS: Record<DayOfWeek, string> = {
   monday: "Lun",
   tuesday: "Mar",
@@ -56,12 +59,13 @@ export const RoutineCard: React.FC<RoutineCardProps> = ({ routine, href }) => {
 
   return (
     <Link href={href} className="block group" style={{ textDecoration: "none", color: "inherit" }}>
-      {/* Replicamos el Card gradient manualmente para poder usar <Link> */}
+      {/* Card con gradiente característico (base opaca para distinguirse del
+          panel del contenedor) */}
       <div
         className="relative rounded-lg overflow-hidden border transition-transform group-hover:-translate-y-px"
         style={{
-          background: "var(--card)",
-          borderColor: "var(--card-border)",
+          height: ROUTINE_CARD_HEIGHT,
+          borderColor: "var(--card-border-light)",
           boxShadow: "var(--shadow-card)",
         }}
       >
@@ -75,7 +79,7 @@ export const RoutineCard: React.FC<RoutineCardProps> = ({ routine, href }) => {
           }}
         />
 
-        <div className="relative p-xl flex flex-col gap-md">
+        <div className="relative p-xl flex flex-col h-full">
           {/* Header: ícono + badge asignados */}
           <div className="flex items-start justify-between gap-md">
             <div
@@ -88,40 +92,34 @@ export const RoutineCard: React.FC<RoutineCardProps> = ({ routine, href }) => {
               <Dumbbell size={18} />
             </div>
 
-            {assignedCount > 0 ? (
+            {assignedCount > 0 && (
               <Badge variant="success" size="sm">
                 {assignedCount} {assignedCount === 1 ? "alumno" : "alumnos"}
               </Badge>
-            ) : (
-              <Badge variant="neutral" size="sm">
-                Sin asignar
-              </Badge>
             )}
           </div>
 
-          {/* Nombre */}
-          <div>
-            <h3
-              className="text-base font-semibold text-fg m-0 leading-tight line-clamp-2"
-              style={{ wordBreak: "break-word" }}
-            >
-              {routine.title}
-            </h3>
-          </div>
+          {/* Nombre — ocupa el espacio flexible para alinear el footer abajo */}
+          <h3
+            className="text-base font-semibold text-fg m-0 mt-md leading-tight line-clamp-2 flex-1"
+            style={{ wordBreak: "break-word" }}
+          >
+            {routine.title}
+          </h3>
 
-          {/* Detalles */}
-          <p className="text-sm text-fg-secondary m-0">
-            {exerciseCount > 0 && (
-              <>{exerciseCount} {exerciseCount === 1 ? "ejercicio" : "ejercicios"}</>
+          {/* Footer: detalles + fecha (siempre al pie) */}
+          <div className="flex flex-col gap-xxs">
+            <p className="text-sm text-fg-secondary m-0 truncate">
+              {exerciseCount > 0 && (
+                <>{exerciseCount} {exerciseCount === 1 ? "ejercicio" : "ejercicios"}</>
+              )}
+              {exerciseCount > 0 && dayStr && " · "}
+              {dayStr}
+            </p>
+            {lastEdited && (
+              <p className="text-xs text-fg-tertiary m-0">{lastEdited}</p>
             )}
-            {exerciseCount > 0 && dayStr && " · "}
-            {dayStr}
-          </p>
-
-          {/* Fecha */}
-          {lastEdited && (
-            <p className="text-xs text-fg-tertiary m-0">{lastEdited}</p>
-          )}
+          </div>
         </div>
       </div>
     </Link>

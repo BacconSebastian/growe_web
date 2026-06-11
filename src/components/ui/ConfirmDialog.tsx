@@ -44,22 +44,23 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="flex flex-col gap-sm">
           <Button
             variant={confirmVariant}
-            size="lg"
+            size="md"
             loading={loading}
             onClick={onConfirm}
             className="w-full"
           >
             {confirmLabel}
           </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            disabled={loading}
-            onClick={onClose}
-            className="w-full"
-          >
-            Cancelar
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={loading}
+              onClick={onClose}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>

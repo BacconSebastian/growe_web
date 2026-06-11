@@ -284,6 +284,60 @@ export interface PlanningShareRequest {
   createdAt: string;
 }
 
+// ─── New planning model — semanas como entidad ───────────────────────────────
+
+export interface PlanningWeekRoutineExercise {
+  id: number;                          // planning_week_routine_exercise_id
+  routine_exercise_id?: number | null; // FK estable a routine_exercises
+  exercise_id?: number | null;
+  name: string;
+  series: number;
+  repetitions: number;
+  weight_kg?: number | null;
+  rir?: number | null;
+  order_index: number;
+  variant_order?: number;
+  sets_data?: RoutineExerciseSet[] | null;
+  exercise_type?: ExerciseType;
+  is_warmup?: boolean;
+  variables_config?: VariablesConfig;  // backend SIEMPRE la resuelve (nunca null en GET)
+  superset_group?: string | null;      // UUID v4 del grupo; null = suelto
+  exercise?: { id: number; name: string; description?: string | null } | null;
+}
+
+export interface PlanningWeekRoutine {
+  id: number;                          // planning_week_routine_id (pivot)
+  routine_id: number;
+  routine_title: string;
+  order_index: number;
+  day_of_week?: string | null;
+  routine_day_of_week?: string[] | null;
+  created_by?: number | null;          // autor de la rutina template (authorship coach)
+  exercises: PlanningWeekRoutineExercise[];
+}
+
+export interface PlanningWeek {
+  id: number;                          // planning_week_id
+  week_number: number;
+  name?: string | null;
+  description?: string | null;
+  routines: PlanningWeekRoutine[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WeekRoutineDetail {
+  id: number;
+  routine_id: number;
+  routine_title: string;
+  planning_id: number;
+  planning_title: string;
+  week_number: number;
+  day_of_week: string | null;
+  routine_day_of_week: string | null;
+  exercises: PlanningWeekRoutineExercise[];
+}
+
 export interface Planning {
   id: number;
   title: string;
@@ -291,6 +345,7 @@ export interface Planning {
   owner_user_id: number;
   target_days: DayOfWeek[] | null;
   status: 'draft' | 'active' | 'archived' | 'completed' | 'scheduled';
+  /** @deprecated total_weeks ya no existe en DB — se deriva de weeks.length */
   total_weeks: number;
   start_date?: string | null;
   current_week_override?: number | null;
@@ -303,6 +358,8 @@ export interface Planning {
   shared_by_user?: PlanningShareUser | null;
   planningShares?: PlanningShare[];
   coach_share_id?: number | null;
+  /** Semanas del planning (modelo nuevo). Hidratado por GET /plannings/:id */
+  weeks?: PlanningWeek[];
 }
 
 export interface RoutineLog {
@@ -1374,6 +1431,20 @@ export interface CoachNote {
   text: string;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Student Log List ─────────────────────────────────────────────────────────
+
+export interface StudentLogListItem {
+  id: number;
+  performed_at: string;
+  duration_minutes: number | null;
+  routine_id: number | null;
+  routine_title: string;
+  planning_id: number | null;
+  planning_title: string | null;
+  week_number: number | null;
+  mood: string | null;
 }
 
 // ─── Monthly Report ───────────────────────────────────────────────────────────

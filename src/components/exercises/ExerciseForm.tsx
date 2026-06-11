@@ -482,7 +482,7 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({ mode, exerciseId }) 
         <Button
           type="submit"
           variant="primary"
-          size="lg"
+          size="md"
           loading={isSubmitting}
           className="flex-1"
         >
@@ -491,7 +491,7 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({ mode, exerciseId }) 
         <Button
           type="button"
           variant="secondary"
-          size="lg"
+          size="md"
           disabled={isSubmitting}
           onClick={() => router.push("/exercises")}
         >

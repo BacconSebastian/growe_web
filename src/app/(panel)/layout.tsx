@@ -5,6 +5,8 @@ import { RequireCoach } from "@/components/ui/RequireCoach";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { Topbar } from "@/components/ui/Topbar";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
+import { getDisplayName } from "@/lib/utils";
 
 /** Deriva el título de la topbar a partir del pathname */
 function getTitleFromPathname(pathname: string): string {
@@ -13,13 +15,22 @@ function getTitleFromPathname(pathname: string): string {
   if (pathname.startsWith("/routines")) return "Rutinas";
   if (pathname.startsWith("/plannings")) return "Planificaciones";
   if (pathname.startsWith("/exercises")) return "Ejercicios";
+  if (pathname.startsWith("/groups")) return "Grupos";
+  if (pathname.startsWith("/templates")) return "Templates";
   if (pathname.startsWith("/profile")) return "Perfil";
   return "Growe Coach";
 }
 
 function PanelShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const title = getTitleFromPathname(pathname);
+  const { user } = useAuth();
+
+  // En el dashboard el título es el saludo personalizado en vez de "Dashboard".
+  const isDashboard = pathname === "/" || pathname === "/dashboard";
+  const firstName = user ? getDisplayName(user).split(" ")[0] : "Coach";
+  const title = isDashboard
+    ? `Hola, ${firstName}`
+    : getTitleFromPathname(pathname);
 
   return (
     <div

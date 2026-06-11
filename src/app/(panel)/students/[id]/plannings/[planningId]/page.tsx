@@ -4,14 +4,14 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { SkeletonLine } from "@/components/ui/Skeleton";
-import { PlanningEditor } from "@/components/plannings/PlanningEditor";
+import { PlanningOverview } from "@/components/plannings/PlanningOverview";
 import { getStudent } from "@/lib/api/coaching";
 import { getErrorMessage } from "@/lib/utils";
 import type { User } from "@/lib/api/types";
 
 /**
- * /students/[id]/plannings/[planningId] — Editar planning del alumno (in-place).
- * Solo editable si created_by === user.id (verificado dentro de PlanningEditor).
+ * /students/[id]/plannings/[planningId] — Editar planning del alumno (in-place, modelo nuevo).
+ * Authorship: PlanningOverview deshabilita editar/borrar de rutinas con created_by !== user.id.
  */
 export default function StudentPlanningPage() {
   const params = useParams();
@@ -21,7 +21,6 @@ export default function StudentPlanningPage() {
   const [student, setStudent] = useState<User | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
 
-  // Cargar el nombre del alumno para el breadcrumb
   useEffect(() => {
     if (!studentId) return;
     getStudent(studentId)
@@ -35,6 +34,14 @@ export default function StudentPlanningPage() {
     student?.first_name
       ? `${student.first_name} ${student.last_name ?? ""}`.trim()
       : student?.username ?? "Alumno";
+
+  if (!studentId || isNaN(studentId) || !planningId || isNaN(planningId)) {
+    return (
+      <div className="flex flex-col gap-xxl">
+        <p className="text-sm text-fg-tertiary">Parámetros inválidos.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-xxl">
@@ -50,7 +57,9 @@ export default function StudentPlanningPage() {
               href={`/students/${studentId}`}
               className="hover:text-fg transition-colors"
             >
-              {student ? studentName : (
+              {student ? (
+                studentName
+              ) : (
                 <span className="inline-block w-24">
                   <SkeletonLine height={14} />
                 </span>
@@ -65,11 +74,10 @@ export default function StudentPlanningPage() {
         )}
       </nav>
 
-      <PlanningEditor
-        mode="edit-coach"
-        planningId={planningId}
+      <PlanningOverview
+        mode="coach"
         studentId={studentId}
-        studentName={studentName}
+        planningId={planningId}
       />
     </div>
   );

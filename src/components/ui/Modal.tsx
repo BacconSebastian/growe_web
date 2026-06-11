@@ -74,7 +74,7 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={[
-          "relative flex flex-col rounded-lg mx-auto my-16",
+          "relative flex flex-col rounded-lg mx-auto my-16 overflow-hidden",
           sizeClasses[size],
         ]
           .filter(Boolean)
@@ -84,16 +84,23 @@ export const Modal: React.FC<ModalProps> = ({
           border: "1px solid var(--card-border-light)",
           boxShadow: "var(--shadow-modal, 0 24px 64px rgba(0,0,0,0.5))",
           maxHeight: "calc(100vh - 8rem)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Tinte de gradiente característico (ámbar → primary) sobre la base */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))",
+          }}
+        />
+
         {/* Header */}
         {(title || dismissable) && (
           <div
-            className="flex items-center justify-between gap-lg px-xxl py-lg flex-shrink-0"
+            className="relative flex items-center justify-between gap-lg px-xxl py-lg flex-shrink-0"
             style={{ borderBottom: "1px solid var(--separator-subtle)" }}
           >
             {title && (
@@ -114,7 +121,7 @@ export const Modal: React.FC<ModalProps> = ({
         )}
 
         {/* Body scrolleable */}
-        <div className="flex-1 overflow-y-auto px-xxl py-xl">
+        <div className="relative flex-1 overflow-y-auto px-xxl py-xl">
           {children}
         </div>
       </div>

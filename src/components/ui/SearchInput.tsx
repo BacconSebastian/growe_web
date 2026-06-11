@@ -39,7 +39,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         placeholder={placeholder}
         className={[
           "w-full h-11 bg-fill-tertiary text-fg placeholder-fg-tertiary",
-          "border border-transparent rounded-md",
+          "border border-transparent rounded-pill",
           "text-base outline-none",
           "transition-colors duration-150",
           "focus:border-primary focus:bg-fill-quaternary",

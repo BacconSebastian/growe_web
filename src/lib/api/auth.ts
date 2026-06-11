@@ -36,7 +36,8 @@ export async function refresh(refreshToken: string): Promise<AuthTokens> {
  * Sirve para validar tokens al bootear la app.
  */
 export async function getMe(accessToken: string): Promise<User> {
-  return httpFetch<User>("/auth/me", {
+  // El backend expone GET /auth/profile (no /auth/me) para el usuario autenticado.
+  return httpFetch<User>("/auth/profile", {
     method: "GET",
     accessToken,
   });

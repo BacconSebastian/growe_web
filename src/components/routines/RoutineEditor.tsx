@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Save, Plus, Lock } from "lucide-react";
+import { Copy, Trash2, Save, Plus, Lock, UserPlus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,6 +19,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock } from "./ExerciseBlock";
 import { ExercisePickerModal } from "./ExercisePickerModal";
 import { editableToRoutineSet } from "./SetsTable";
+import { AssignRoutineModal } from "@/components/coaching/AssignRoutineModal";
 
 import { getRoutine, createRoutine, updateRoutine, deleteRoutine } from "@/lib/api/routines";
 import { getStudentRoutine, updateStudentRoutine } from "@/lib/api/coaching";
@@ -148,6 +149,9 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
 
   // Authorship para modo edit-coach
   const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Modal de asignación a alumno
+  const [showAssignModal, setShowAssignModal] = useState(false);
 
   // ─── React Hook Form ──────────────────────────────────────────────────────
 
@@ -669,22 +673,19 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
                   Ningún alumno tiene esta rutina asignada.
                 </p>
               )}
-              {/* TODO: Botón "Asignar a alumno" — requiere endpoint POST /api/routines/:id/shares
-                   o equivalente. No está documentado en PLANNING.md para esta wave. */}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled
-                title="Próximamente"
-              >
-                <Plus size={14} />
-                Asignar a alumno
-              </Button>
-              <p className="text-xs text-fg-tertiary m-0 mt-xs text-center">
-                Disponible próximamente
-              </p>
+              {/* Botón "Asignar a alumno" — solo disponible en edit-own con rutina guardada */}
+              {mode === "edit-own" && routineId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setShowAssignModal(true)}
+                  iconLeft={<UserPlus size={14} />}
+                >
+                  Asignar a alumno
+                </Button>
+              )}
             </Card>
 
             {/* Card: Detalles */}
@@ -721,6 +722,20 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
         onConfirm={handleDelete}
         onClose={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Modal de asignación a alumno — solo para edit-own con rutina guardada */}
+      {showAssignModal && routine && routineId && (
+        <AssignRoutineModal
+          open={showAssignModal}
+          routineId={routineId}
+          routineTitle={routine.title}
+          onClose={() => setShowAssignModal(false)}
+          onAssigned={() => {
+            // No cerramos el modal automáticamente — el coach puede asignar
+            // la misma rutina a varios alumnos seguidos.
+          }}
+        />
+      )}
     </form>
   );
 };

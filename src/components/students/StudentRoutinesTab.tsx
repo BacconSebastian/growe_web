@@ -36,6 +36,15 @@ function formatStatus(status: string): { label: string; variant: "success" | "ne
 /**
  * StudentRoutinesTab — lista completa de rutinas del alumno.
  * El botón "Editar" solo aparece si el coach es el creador.
+ *
+ * NOTA sobre "Duplicar a mi biblioteca":
+ * El mobile implementa esta acción de forma local — hidrata los ejercicios de la rutina del
+ * alumno, los serializa en un buffer en memoria y navega a /routines/copy para que el coach
+ * guarde la copia manualmente.
+ * El backend NO expone un endpoint POST /coaching/students/:id/routines/:routineId/duplicate
+ * equivalente al de plannings (POST .../plannings/:id/duplicate). Por eso esta acción está
+ * OMITIDA en el web panel hasta que el backend la provea o hasta que se implemente el flujo
+ * de buffer + redirect en el web.
  */
 export const StudentRoutinesTab: React.FC<StudentRoutinesTabProps> = ({
   studentId,
@@ -120,6 +129,13 @@ export const StudentRoutinesTab: React.FC<StudentRoutinesTabProps> = ({
                   Solo lectura
                 </Button>
               )}
+              {/*
+               * TODO: "Duplicar a mi biblioteca" para rutinas
+               * El backend no expone POST /coaching/students/:studentId/routines/:routineId/duplicate.
+               * El mobile resuelve esto con un buffer local + redirect a /routines/copy.
+               * Implementar cuando el backend provea el endpoint o cuando se porte el flujo de buffer al web.
+               * Sería análogo al botón que sí existe en StudentPlanningsTab (plannings sí tienen endpoint).
+               */}
             </div>
           </div>
         );

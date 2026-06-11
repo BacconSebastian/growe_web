@@ -145,22 +145,23 @@ export const ActivateDeactivateModal: React.FC<ActivateDeactivateModalProps> = (
         <div className="flex flex-col gap-sm pt-sm" style={{ borderTop: "1px solid var(--separator-subtle)" }}>
           <Button
             variant={action === "deactivate" || action === "cancel_schedule" ? "secondary" : "primary"}
-            size="lg"
+            size="md"
             loading={saving}
             onClick={handleConfirm}
             className="w-full"
           >
             {confirmLabel(action)}
           </Button>
-          <Button
-            variant="ghost"
-            size="lg"
-            disabled={saving}
-            onClick={onClose}
-            className="w-full"
-          >
-            Cancelar
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={onClose}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>

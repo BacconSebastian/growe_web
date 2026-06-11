@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileText, UserX } from "lucide-react";
+import { FileText, UserX, StickyNote, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -15,6 +15,8 @@ import type { User } from "@/lib/api/types";
 interface StudentHeaderProps {
   student: User;
   onShowReport: () => void;
+  onOpenNotes?: () => void;
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -23,6 +25,8 @@ interface StudentHeaderProps {
 export const StudentHeader: React.FC<StudentHeaderProps> = ({
   student,
   onShowReport,
+  onOpenNotes,
+  onOpenSettings,
 }) => {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -90,6 +94,16 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
 
         {/* Acciones */}
         <div className="flex gap-sm flex-shrink-0">
+          {onOpenNotes && (
+            <Button
+              variant="secondary"
+              size="md"
+              iconLeft={<StickyNote size={16} />}
+              onClick={onOpenNotes}
+            >
+              Notas
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="md"
@@ -98,6 +112,16 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
           >
             Reporte mensual
           </Button>
+          {onOpenSettings && (
+            <Button
+              variant="secondary"
+              size="md"
+              iconLeft={<Settings size={16} />}
+              onClick={onOpenSettings}
+            >
+              Ajustes
+            </Button>
+          )}
           <Button
             variant="danger"
             size="md"

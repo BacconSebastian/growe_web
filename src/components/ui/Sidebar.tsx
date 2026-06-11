@@ -11,6 +11,8 @@ import {
   User,
   LogOut,
   Layers,
+  UsersRound,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -45,6 +47,16 @@ const NAV_ITEMS: SidebarItem[] = [
     href: "/exercises",
     label: "Ejercicios",
     icon: <Layers size={18} />,
+  },
+  {
+    href: "/groups",
+    label: "Grupos",
+    icon: <UsersRound size={18} />,
+  },
+  {
+    href: "/templates",
+    label: "Templates",
+    icon: <BookOpen size={18} />,
   },
 ];
 

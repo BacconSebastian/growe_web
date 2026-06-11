@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CalendarDays } from "lucide-react";
-import { listStudentPlannings } from "@/lib/api/coaching";
+import { CalendarDays, Copy } from "lucide-react";
+import Link from "next/link";
+import { listStudentPlannings, duplicateStudentPlanningToLibrary } from "@/lib/api/coaching";
 import { getErrorMessage } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SkeletonBox } from "@/components/ui/Skeleton";
@@ -12,6 +15,8 @@ import type { Planning } from "@/lib/api/types";
 
 interface StudentPlanningsTabProps {
   studentId: number;
+  /** Opcional: el tab lo deriva del AuthContext si no se pasa */
+  coachId?: number;
 }
 
 function PlanningsSkeleton() {
@@ -43,13 +48,22 @@ function formatDate(dateStr: string | null | undefined): string {
 
 /**
  * StudentPlanningsTab — lista de plannings del alumno con status badge.
+ * El botón "Duplicar a mi biblioteca" aparece solo si el coach es el creador.
  */
 export const StudentPlanningsTab: React.FC<StudentPlanningsTabProps> = ({
   studentId,
+  coachId: coachIdProp,
 }) => {
+  const { user } = useAuth();
+  // Preferir coachId explícito (pasado por el host), si no, usar el usuario autenticado
+  const coachId = coachIdProp ?? user?.id ?? 0;
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [plannings, setPlannings] = useState<Planning[]>([]);
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [duplicateSuccess, setDuplicateSuccess] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +82,21 @@ export const StudentPlanningsTab: React.FC<StudentPlanningsTabProps> = ({
     load();
     return () => { cancelled = true; };
   }, [studentId]);
+
+  const handleDuplicate = async (planningId: number) => {
+    if (duplicatingId !== null) return;
+    setDuplicatingId(planningId);
+    setDuplicateError(null);
+    setDuplicateSuccess(null);
+    try {
+      await duplicateStudentPlanningToLibrary(studentId, planningId);
+      setDuplicateSuccess(planningId);
+    } catch (err) {
+      setDuplicateError(getErrorMessage(err, "No se pudo duplicar la planificación"));
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   if (loading) return <PlanningsSkeleton />;
   if (error) return <ErrorBanner message={error} />;
@@ -90,9 +119,16 @@ export const StudentPlanningsTab: React.FC<StudentPlanningsTabProps> = ({
 
   return (
     <div className="flex flex-col gap-md">
+      {duplicateError && (
+        <ErrorBanner message={duplicateError} />
+      )}
+
       {sorted.map((planning) => {
         const { label, variant } = statusBadge(planning.status);
         const isActive = planning.status === "active";
+        // Authorship: el coach solo puede duplicar plannings que él creó
+        const isAuthor = planning.created_by === coachId;
+        const weekCount = planning.weeks?.length ?? planning.total_weeks ?? 0;
 
         return (
           <div
@@ -107,28 +143,57 @@ export const StudentPlanningsTab: React.FC<StudentPlanningsTabProps> = ({
             }}
           >
             <div className="flex items-start justify-between gap-md flex-wrap">
-              <div className="flex flex-col gap-xs min-w-0">
+              <div className="flex flex-col gap-xs min-w-0 flex-1">
                 <span className="text-base font-semibold text-fg">
                   {planning.title}
                 </span>
                 <div className="flex items-center gap-sm flex-wrap">
                   <Badge variant={variant} size="sm">{label}</Badge>
-                  <span className="text-xs text-fg-tertiary">
-                    {planning.total_weeks} semana(s)
-                  </span>
-                  {planning.current_week && isActive && (
-                    <span className="text-xs text-fg-secondary">
-                      Semana {planning.current_week} / {planning.total_weeks}
+                  {weekCount > 0 && (
+                    <span className="text-xs text-fg-tertiary">
+                      {weekCount} semana{weekCount !== 1 ? "s" : ""}
                     </span>
+                  )}
+                  {planning.current_week && isActive && weekCount > 0 && (
+                    <span className="text-xs text-fg-secondary">
+                      Semana {planning.current_week} / {weekCount}
+                    </span>
+                  )}
+                  {!isAuthor && (
+                    <Badge variant="neutral" size="sm">Read-only</Badge>
                   )}
                 </div>
               </div>
 
-              {planning.start_date && (
-                <span className="text-xs text-fg-tertiary flex-shrink-0">
-                  Inicio: {formatDate(planning.start_date)}
-                </span>
-              )}
+              <div className="flex items-center gap-sm flex-shrink-0 flex-wrap">
+                {planning.start_date && (
+                  <span className="text-xs text-fg-tertiary">
+                    Inicio: {formatDate(planning.start_date)}
+                  </span>
+                )}
+
+                {/* Ver / editar */}
+                <Link href={`/students/${studentId}/plannings/${planning.id}`}>
+                  <Button variant="outline" size="sm">
+                    Ver
+                  </Button>
+                </Link>
+
+                {/* Duplicar a mi biblioteca — solo si el coach es autor */}
+                {isAuthor && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    iconLeft={<Copy size={13} />}
+                    loading={duplicatingId === planning.id}
+                    disabled={duplicatingId !== null || duplicateSuccess === planning.id}
+                    onClick={() => handleDuplicate(planning.id)}
+                    title="Crear una copia en mi biblioteca"
+                  >
+                    {duplicateSuccess === planning.id ? "Duplicada" : "Duplicar"}
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Grid de días target si tiene */}

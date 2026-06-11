@@ -184,7 +184,7 @@ export const AvatarUploadModal: React.FC<AvatarUploadModalProps> = ({
           <Button
             type="button"
             variant="primary"
-            size="lg"
+            size="md"
             loading={uploading}
             disabled={!file || Boolean(error)}
             onClick={handleUpload}
@@ -192,16 +192,17 @@ export const AvatarUploadModal: React.FC<AvatarUploadModalProps> = ({
           >
             Subir avatar
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            disabled={uploading}
-            onClick={handleClose}
-            className="w-full"
-          >
-            Cancelar
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={uploading}
+              onClick={handleClose}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
       </div>
 

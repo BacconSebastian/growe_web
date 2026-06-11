@@ -16,7 +16,6 @@ function getTitleFromPathname(pathname: string): string {
   if (pathname.startsWith("/plannings")) return "Planificaciones";
   if (pathname.startsWith("/exercises")) return "Ejercicios";
   if (pathname.startsWith("/groups")) return "Grupos";
-  if (pathname.startsWith("/templates")) return "Templates";
   if (pathname.startsWith("/profile")) return "Perfil";
   return "Growe Coach";
 }

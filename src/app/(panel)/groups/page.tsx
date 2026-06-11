@@ -1,97 +1,123 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, BookOpen, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { listGroups } from "@/lib/api/coaching";
-import type { TrainingGroup } from "@/lib/api/types";
-import type { PaginationMeta } from "@/lib/api/types";
+import type { TrainingGroup, PaginationMeta } from "@/lib/api/types";
 import { getErrorMessage } from "@/lib/utils";
-import { GroupCard } from "@/components/groups/GroupCard";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { GradientSurface } from "@/components/ui/GradientSurface";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { SkeletonLine, SkeletonBox } from "@/components/ui/Skeleton";
+import { SkeletonLine, SkeletonCircle } from "@/components/ui/Skeleton";
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
+const PER_PAGE = 7;
+/** Alto fijo de fila. */
+const ROW_HEIGHT = 68;
 
-function GroupsSkeleton() {
+// ─── Fila de grupo ──────────────────────────────────────────────────────────
+
+interface GroupRowProps {
+  group: TrainingGroup;
+  isLast: boolean;
+}
+
+function GroupRow({ group, isLast }: GroupRowProps) {
   return (
-    <div className="flex flex-col gap-md">
-      {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="rounded-lg p-xl flex items-center gap-lg"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--separator-subtle)",
-          }}
-        >
-          <SkeletonBox width={44} height={44} className="rounded-pill flex-shrink-0" />
-          <div className="flex flex-col gap-sm flex-1">
-            <SkeletonLine width={160} height={16} />
-            <SkeletonLine width={100} height={12} />
-          </div>
+    <div
+      className="flex items-center gap-md px-xl transition-colors duration-100 hover:bg-fill-tertiary"
+      style={{
+        minHeight: ROW_HEIGHT,
+        ...(isLast ? {} : { borderBottom: "1px solid var(--separator-subtle)" }),
+      }}
+    >
+      <div
+        className="w-9 h-9 rounded-pill flex items-center justify-center flex-shrink-0"
+        style={{ background: "var(--primary-alpha-12)" }}
+      >
+        <Users size={18} style={{ color: "var(--primary)" }} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-fg m-0 truncate">{group.name}</p>
+        <div className="flex items-center gap-xs flex-wrap mt-xxs">
+          <Badge variant="neutral" size="sm">
+            {group.member_count}{" "}
+            {group.member_count === 1 ? "alumno" : "alumnos"}
+          </Badge>
+          {group.assigned_planning_title && (
+            <Badge variant="primary" size="sm">
+              <span className="flex items-center gap-xxs">
+                <BookOpen size={10} />
+                {group.assigned_planning_title}
+              </span>
+            </Badge>
+          )}
         </div>
-      ))}
+      </div>
+
+      <Link href={`/groups/${group.id}`} className="no-underline flex-shrink-0">
+        <Button variant="secondary" size="sm" iconRight={<ChevronRight size={14} />}>
+          Ver grupo
+        </Button>
+      </Link>
     </div>
   );
 }
 
-// ─── Summary stats ────────────────────────────────────────────────────────────
+// ─── Skeleton ───────────────────────────────────────────────────────────────
 
-interface SummaryCardsProps {
-  totalGroups: number;
-  totalMembers: number;
-}
-
-function SummaryCards({ totalGroups, totalMembers }: SummaryCardsProps) {
-  const items = [
-    { label: "Grupos", value: totalGroups, icon: <Users size={16} /> },
-    { label: "Total alumnos", value: totalMembers, icon: <Users size={16} style={{ color: "var(--accent, var(--primary))" }} /> },
-  ];
-
+function ListSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-md mb-xl">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="rounded-lg p-xl flex flex-col gap-sm"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--separator-subtle)",
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
-          <div className="flex items-center gap-sm">
-            <div
-              className="w-7 h-7 rounded-pill flex items-center justify-center"
-              style={{ background: "var(--primary-alpha-12)" }}
-            >
-              <span style={{ color: "var(--primary)" }}>{item.icon}</span>
+    <GradientSurface>
+      <div className="flex flex-col" style={{ minHeight: ROW_HEIGHT * PER_PAGE }}>
+        {Array.from({ length: PER_PAGE }, (_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-md px-xl"
+            style={{
+              height: ROW_HEIGHT,
+              ...(i < PER_PAGE - 1
+                ? { borderBottom: "1px solid var(--separator-subtle)" }
+                : {}),
+            }}
+          >
+            <SkeletonCircle size={36} />
+            <div className="flex flex-col gap-xs flex-1">
+              <SkeletonLine width={160} height={14} />
+              <SkeletonLine width={90} height={12} />
             </div>
-            <span className="text-xl font-bold text-fg">{item.value}</span>
+            <SkeletonLine width={96} height={30} className="rounded-pill" />
           </div>
-          <span className="text-xs text-fg-tertiary">{item.label}</span>
+        ))}
+      </div>
+      <div
+        className="flex items-center justify-between gap-lg py-md px-lg"
+        style={{ borderTop: "1px solid var(--separator-subtle)" }}
+      >
+        <SkeletonLine width={80} height={14} />
+        <div className="flex items-center gap-sm">
+          <SkeletonLine width={84} height={30} className="rounded-pill" />
+          <SkeletonLine width={90} height={30} className="rounded-pill" />
         </div>
-      ))}
-    </div>
+      </div>
+    </GradientSurface>
   );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ─── Página ───────────────────────────────────────────────────────────────────
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<TrainingGroup[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
-    per_page: 10,
+    per_page: PER_PAGE,
     total: 0,
     total_pages: 0,
   });
-  const [totalMembers, setTotalMembers] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -105,12 +131,11 @@ export default function GroupsPage() {
     try {
       const res = await listGroups({
         page: currentPage,
-        perPage: 10,
+        perPage: PER_PAGE,
         search: searchQuery || undefined,
       });
       setGroups(res.items);
       setPagination(res.pagination);
-      setTotalMembers(res.totalMembers);
     } catch (err) {
       setError(getErrorMessage(err, "No se pudieron cargar los grupos"));
     } finally {
@@ -138,81 +163,77 @@ export default function GroupsPage() {
   const isEmpty = !loading && groups.length === 0;
 
   return (
-    <div className="flex flex-col gap-xl">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-lg flex-wrap">
-        <div>
-          <h1
-            className="text-display font-bold tracking-tight"
-            style={{ margin: 0, letterSpacing: "-0.4px" }}
-          >
-            Grupos
-          </h1>
-          <p className="text-base text-fg-secondary mt-xs m-0">
-            Organizá tus alumnos en grupos de entrenamiento
-          </p>
-        </div>
-        <Link href="/groups/new">
+    <div className="flex flex-col gap-lg">
+      {error && <ErrorBanner message={error} dismissible />}
+
+      {/* Controles: buscador + nuevo grupo, en una sola línea */}
+      <div className="flex items-center gap-md">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar grupo por nombre..."
+          className="w-72 flex-shrink-0"
+        />
+
+        <Link href="/groups/new" className="ml-auto flex-shrink-0">
           <Button variant="primary" size="md" iconLeft={<Plus size={16} />}>
             Nuevo grupo
           </Button>
         </Link>
       </div>
 
-      {error && <ErrorBanner message={error} dismissible />}
-
-      {/* Summary */}
-      {!loading && groups.length > 0 && (
-        <SummaryCards totalGroups={pagination.total} totalMembers={totalMembers} />
-      )}
-
-      {/* Buscador */}
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        placeholder="Buscar por nombre..."
-        className="w-full max-w-xs"
-      />
-
-      {/* Lista */}
+      {/* Lista de grupos */}
       {loading ? (
-        <GroupsSkeleton />
-      ) : isEmpty ? (
-        <EmptyState
-          icon={<Users size={24} />}
-          title={search ? "Sin resultados" : "No tenés grupos aún"}
-          description={
-            search
-              ? "Probá con otro nombre."
-              : "Creá tu primer grupo para organizar a tus alumnos."
-          }
-          action={
-            !search ? (
-              <Link href="/groups/new">
-                <Button variant="primary" iconLeft={<Plus size={16} />}>
-                  Crear grupo
-                </Button>
-              </Link>
-            ) : undefined
-          }
-        />
+        <ListSkeleton />
+      ) : isEmpty && !search ? (
+        <GradientSurface>
+          <div className="flex flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+            <Users size={28} style={{ color: "var(--fg-tertiary)" }} />
+            <p className="text-base font-medium text-fg m-0">No tenés grupos aún</p>
+            <p className="text-sm text-fg-secondary m-0">
+              Creá tu primer grupo para organizar a tus alumnos.
+            </p>
+            <Link href="/groups/new" className="mt-sm">
+              <Button variant="primary" size="md" iconLeft={<Plus size={16} />}>
+                Crear grupo
+              </Button>
+            </Link>
+          </div>
+        </GradientSurface>
       ) : (
-        <>
-          <div className="flex flex-col gap-md">
-            {groups.map((group) => (
-              <GroupCard key={group.id} group={group} />
-            ))}
+        <GradientSurface>
+          <div
+            className="flex flex-col"
+            style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+          >
+            {isEmpty ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+                <Users size={28} style={{ color: "var(--fg-tertiary)" }} />
+                <p className="text-sm text-fg-secondary m-0">
+                  No hay grupos que coincidan con la búsqueda.
+                </p>
+              </div>
+            ) : (
+              groups.map((group, idx) => (
+                <GroupRow
+                  key={group.id}
+                  group={group}
+                  isLast={idx === groups.length - 1}
+                />
+              ))
+            )}
           </div>
 
-          {pagination.total_pages > 1 && (
+          {/* Paginación — mismo componente, siempre visible, al pie del contenedor */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
             <Pagination
               page={pagination.page}
               perPage={pagination.per_page}
               total={pagination.total}
               onPageChange={setPage}
             />
-          )}
-        </>
+          </div>
+        </GradientSurface>
       )}
     </div>
   );

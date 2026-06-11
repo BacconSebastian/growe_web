@@ -12,7 +12,6 @@ import {
   LogOut,
   Layers,
   UsersRound,
-  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -52,11 +51,6 @@ const NAV_ITEMS: SidebarItem[] = [
     href: "/groups",
     label: "Grupos",
     icon: <UsersRound size={18} />,
-  },
-  {
-    href: "/templates",
-    label: "Templates",
-    icon: <BookOpen size={18} />,
   },
 ];
 

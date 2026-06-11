@@ -1,6 +1,13 @@
 import React from "react";
 
-type ButtonVariant = "primary" | "outline" | "ghost" | "secondary" | "danger" | "success";
+type ButtonVariant =
+  | "primary"
+  | "outline"
+  | "ghost"
+  | "secondary"
+  | "danger"
+  | "dangerSoft"
+  | "success";
 type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -28,6 +35,9 @@ const variantClasses: Record<ButtonVariant, string> = {
     "bg-fill-tertiary text-fg border-[var(--card-border-light)] hover:bg-fill-secondary hover:-translate-y-px hover:border-[var(--separator)] focus-visible:ring-[var(--fg-tertiary)]",
   danger:
     "bg-destructive text-on-destructive border-transparent shadow-[0_2px_12px_var(--destructive-alpha-20)] hover:-translate-y-px hover:brightness-110 hover:shadow-[0_5px_18px_var(--destructive-alpha-20)] focus-visible:ring-[var(--destructive)]",
+  // Rojo tonal: fondo + borde (no sólido). Para acciones destructivas secundarias.
+  dangerSoft:
+    "bg-[var(--destructive-alpha-12)] text-destructive border-[var(--destructive)] hover:bg-[var(--destructive-alpha-20)] hover:-translate-y-px focus-visible:ring-[var(--destructive)]",
   success:
     "bg-success text-on-success border-transparent shadow-[0_2px_12px_var(--success-alpha-30)] hover:-translate-y-px hover:brightness-110 hover:shadow-[0_5px_18px_var(--success-alpha-30)] focus-visible:ring-[var(--success)]",
 };

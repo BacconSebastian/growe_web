@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Settings2, Flame } from "lucide-react";
+import { Settings2, Flame, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
@@ -22,6 +22,7 @@ import {
   getMuscleGroups,
   createExercise,
   updateExercise,
+  suggestMuscleGroups,
 } from "@/lib/api/exercises";
 import { httpFetch } from "@/lib/api/http";
 import { getErrorMessage } from "@/lib/utils";
@@ -122,6 +123,35 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({ mode, exerciseId }) 
   });
 
   const exerciseType = watch("exercise_type");
+  const nameValue = watch("name");
+
+  // Sugerencia de grupos musculares vía IA a partir del nombre.
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const handleSuggestMuscleGroups = async () => {
+    const name = (nameValue ?? "").trim();
+    if (name.length < 2) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const suggestions = await suggestMuscleGroups(name);
+      if (suggestions.length === 0) {
+        setSuggestError("La IA no sugirió grupos para este ejercicio.");
+        return;
+      }
+      setValue("muscle_groups", suggestions.slice(0, 3), {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    } catch (err) {
+      setSuggestError(
+        getErrorMessage(err, "No se pudieron sugerir grupos musculares.")
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   // Cargar grupos musculares
   useEffect(() => {
@@ -338,9 +368,25 @@ export const ExerciseForm: React.FC<ExerciseFormProps> = ({ mode, exerciseId }) 
 
       {/* Grupos musculares */}
       <div className="flex flex-col gap-sm">
-        <label className="text-sm font-medium text-fg-secondary">
-          Grupos musculares (máx. 3)
-        </label>
+        <div className="flex items-center justify-between gap-md">
+          <label className="text-sm font-medium text-fg-secondary">
+            Grupos musculares (máx. 3)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            iconLeft={<Sparkles size={14} />}
+            loading={suggesting}
+            disabled={(nameValue ?? "").trim().length < 2 || suggesting}
+            onClick={handleSuggestMuscleGroups}
+          >
+            Sugerir con IA
+          </Button>
+        </div>
+        {suggestError && (
+          <p className="text-xs text-destructive m-0">{suggestError}</p>
+        )}
         {loadingGroups ? (
           <div className="flex gap-xs flex-wrap">
             {[1, 2, 3, 4, 5].map((i) => (

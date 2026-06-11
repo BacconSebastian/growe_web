@@ -65,15 +65,22 @@ const PENDING_BODY_MIN_HEIGHT = 152;
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-lg">
+      {/* Stat cards (4) */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-lg">
         {[1, 2, 3, 4].map((i) => (
-          <SkeletonBox key={i} height={100} />
+          <SkeletonBox key={i} height={96} />
         ))}
       </div>
 
+      {/* Grid principal — espeja las alturas reales (≈520px de alto de columna):
+          izquierda = Solicitudes (264) + Borradores (240); derecha = Necesitan
+          atención (col-span-2) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg">
-        <SkeletonBox height={200} />
-        <SkeletonBox height={200} className="lg:col-span-2" />
+        <div className="flex flex-col gap-lg">
+          <SkeletonBox height={264} />
+          <SkeletonBox height={240} />
+        </div>
+        <SkeletonBox height={520} className="lg:col-span-2" />
       </div>
     </div>
   );

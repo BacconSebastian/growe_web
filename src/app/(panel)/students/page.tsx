@@ -264,7 +264,7 @@ export default function StudentsPage() {
 
         <Button
           variant="primary"
-          size="sm"
+          size="md"
           iconLeft={<UserPlus size={16} />}
           onClick={() => setInviteOpen(true)}
           className="ml-auto flex-shrink-0"

@@ -62,8 +62,12 @@ Referencia de implementación ya hecha: **Dashboard**, **Alumnos** y **Rutinas**
 - **Reutilizar SIEMPRE** el componente `Pagination` (`@/components/ui/Pagination`).
   Nunca reimplementar controles de paginación.
 - Va como **footer del contenedor**, con `borderTop: 1px solid var(--separator-subtle)`.
-- **Siempre visible** (aunque haya una sola página): el componente deshabilita
-  "Anterior/Siguiente" solo cuando corresponde.
+- **🔴 REGLA INNEGOCIABLE — la paginación SIEMPRE se renderiza si la lista usa
+  paginación, AUNQUE haya una sola página (o ninguna).** Nunca condicionar su
+  render con `total > PER_PAGE` ni similar. El componente `Pagination` ya
+  deshabilita "Anterior/Siguiente" cuando no aplica — esa es la única señal de
+  "no hay más páginas". Esto vale **también dentro de modales** (ej. modales de
+  detalle de métricas del Dashboard) y en cualquier listado paginado.
 - Como el contenedor tiene alto fijo (base #2), **la paginación queda siempre en
   el mismo lugar** entre páginas.
 - Filtros/búsqueda/paginación son **server-side** cuando el listado está paginado

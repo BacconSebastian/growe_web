@@ -98,17 +98,15 @@ export function MetricDetailModal({
         )}
       </div>
 
-      {/* Paginación — solo si hay más de una página */}
-      {total > PER_PAGE && (
-        <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
-          <Pagination
-            page={currentPage}
-            perPage={PER_PAGE}
-            total={total}
-            onPageChange={setPage}
-          />
-        </div>
-      )}
+      {/* Paginación — SIEMPRE visible (deshabilitada si hay una sola página) */}
+      <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+        <Pagination
+          page={currentPage}
+          perPage={PER_PAGE}
+          total={total}
+          onPageChange={setPage}
+        />
+      </div>
     </Modal>
   );
 }

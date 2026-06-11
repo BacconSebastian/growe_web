@@ -4,208 +4,182 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
 import { SearchInput } from "@/components/ui/SearchInput";
-import { SkeletonBox } from "@/components/ui/Skeleton";
+import { MultiSelect } from "@/components/ui/MultiSelect";
+import { Pagination } from "@/components/ui/Pagination";
+import { GradientSurface } from "@/components/ui/GradientSurface";
+import { SkeletonBox, SkeletonLine } from "@/components/ui/Skeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { PlanningCard } from "@/components/plannings/PlanningCard";
+import {
+  PlanningCard,
+  PLANNING_CARD_HEIGHT,
+} from "@/components/plannings/PlanningCard";
 import { listPlannings } from "@/lib/api/plannings";
 import { getErrorMessage } from "@/lib/utils";
 import type { Planning } from "@/lib/api/types";
 
-type FilterStatus = "all" | "active" | "draft" | "scheduled" | "completed";
+const PER_PAGE = 8;
 
-const FILTER_CHIPS: { key: FilterStatus; label: string }[] = [
-  { key: "all",       label: "Todas"       },
-  { key: "active",    label: "Activas"     },
-  { key: "draft",     label: "Borrador"    },
-  { key: "scheduled", label: "Programadas" },
-  { key: "completed", label: "Completadas" },
+// Filtro por días asignados (valor = clave inglesa; label = español)
+const DAY_OPTIONS: { value: string; label: string }[] = [
+  { value: "monday", label: "Lunes" },
+  { value: "tuesday", label: "Martes" },
+  { value: "wednesday", label: "Miércoles" },
+  { value: "thursday", label: "Jueves" },
+  { value: "friday", label: "Viernes" },
+  { value: "saturday", label: "Sábado" },
+  { value: "sunday", label: "Domingo" },
 ];
 
 export default function PlanningsPage() {
   const [plannings, setPlannings] = useState<Planning[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [filter, setFilter] = useState<FilterStatus>("all");
+  const [dayFilters, setDayFilters] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
 
-  // Debounce de búsqueda
+  const load = useCallback(
+    async (p: number, q: string, days: string[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await listPlannings({
+          page: p,
+          per_page: PER_PAGE,
+          search: q || undefined,
+          day_of_week: days.length ? days.join(",") : undefined,
+        });
+        const items = Array.isArray(res) ? res : res.items ?? [];
+        setPlannings(items as Planning[]);
+        setTotal(Array.isArray(res) ? items.length : res.pagination?.total ?? 0);
+      } catch (err) {
+        setError(getErrorMessage(err, "No se pudieron cargar las planificaciones."));
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // Carga al montar y ante cualquier cambio de página/búsqueda/filtros (con debounce).
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    const t = setTimeout(() => {
+      load(page, search, dayFilters);
+    }, 250);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [page, search, dayFilters, load]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params: { status?: string; search?: string } = {};
-      if (filter !== "all") params.status = filter;
-      if (debouncedSearch) params.search = debouncedSearch;
-      const res = await listPlannings(params);
-      // El backend puede devolver items directamente o dentro de data
-      const items = Array.isArray(res) ? res : (res.items ?? []);
-      setPlannings(items as Planning[]);
-    } catch (err) {
-      setError(getErrorMessage(err, "No se pudieron cargar las planificaciones."));
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, debouncedSearch]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const counts: Record<FilterStatus, number> = {
-    all:       plannings.length,
-    active:    plannings.filter((p) => p.status === "active").length,
-    draft:     plannings.filter((p) => p.status === "draft").length,
-    scheduled: plannings.filter((p) => p.status === "scheduled").length,
-    completed: plannings.filter((p) => p.status === "completed").length,
-  };
-
-  // Cuando hay filtro activo recargamos; los counts se calculan sobre los datos actuales
-  const visiblePlannings =
-    filter === "all"
-      ? plannings
-      : plannings.filter((p) => p.status === filter);
+  const hasActiveFilters = Boolean(search || dayFilters.length);
 
   return (
-    <div className="flex flex-col gap-xxl">
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-lg flex-wrap">
-        <div>
-          <h1
-            className="text-display font-bold tracking-tight"
-            style={{ margin: 0, letterSpacing: "-0.4px" }}
-          >
-            Planificaciones
-          </h1>
-          <p className="text-base text-fg-secondary mt-xs m-0">
-            {loading ? "Cargando..." : `${plannings.length} ciclo${plannings.length !== 1 ? "s" : ""} creados`}
-          </p>
-        </div>
-        <Link href="/plannings/new">
+    <div className="flex flex-col gap-lg">
+      {error && <ErrorBanner message={error} dismissible />}
+
+      {/* Controles: buscador + filtro de estado a la izquierda, nueva a la derecha */}
+      <div className="flex gap-md items-center flex-wrap">
+        <SearchInput
+          value={search}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Buscar planificación..."
+          className="w-72 flex-shrink-0"
+        />
+
+        <MultiSelect
+          selected={dayFilters}
+          onChange={(v) => {
+            setDayFilters(v);
+            setPage(1);
+          }}
+          ariaLabel="Filtrar por día asignado"
+          placeholder="Días"
+          options={DAY_OPTIONS}
+        />
+
+        <Link href="/plannings/new" className="ml-auto flex-shrink-0">
           <Button variant="primary" size="md" iconLeft={<Plus size={16} />}>
             Nueva planificación
           </Button>
         </Link>
       </div>
 
-      {/* Filtros y búsqueda */}
-      <div className="flex gap-md items-center flex-wrap">
-        <div className="flex-1" style={{ maxWidth: 360 }}>
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar planificación..."
-          />
-        </div>
-        <div className="flex gap-sm flex-wrap">
-          {FILTER_CHIPS.map(({ key, label }) => (
-            <Chip
-              key={key}
-              active={filter === key}
-              onClick={() => setFilter(key)}
-            >
-              {label}
-              {!loading && filter === key && counts[key] > 0 && (
-                <span className="ml-xs opacity-60">({counts[key]})</span>
-              )}
-            </Chip>
-          ))}
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && <ErrorBanner message={error} />}
-
-      {/* Loading */}
-      {loading && (
-        <div className="grid gap-lg" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonBox key={i} height={160} />
-          ))}
-        </div>
-      )}
-
-      {/* Grid de plannings */}
-      {!loading && !error && (
-        <>
-          {visiblePlannings.length === 0 ? (
-            <EmptyState
-              icon={<CalendarDays size={24} />}
-              title={
-                search || filter !== "all"
-                  ? "Sin resultados"
-                  : "No tenés planificaciones"
-              }
-              description={
-                search || filter !== "all"
-                  ? "Probá cambiar los filtros o la búsqueda."
-                  : "Creá tu primer ciclo de entrenamiento por semanas y asignalo a tus alumnos."
-              }
-              action={
-                !search && filter === "all" ? (
-                  <Link href="/plannings/new">
-                    <Button variant="primary" iconLeft={<Plus size={16} />}>
-                      Nueva planificación
-                    </Button>
-                  </Link>
-                ) : undefined
-              }
-            />
-          ) : (
-            <div className="grid gap-lg" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-              {visiblePlannings.map((planning) => (
-                <PlanningCard
-                  key={planning.id}
-                  planning={planning}
-                  href={`/plannings/${planning.id}`}
-                />
+      {/* Contenido */}
+      {loading ? (
+        <GradientSurface>
+          <div className="min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
+              {Array.from({ length: PER_PAGE }).map((_, i) => (
+                <SkeletonBox key={i} height={PLANNING_CARD_HEIGHT} />
               ))}
-
-              {/* CTA card: siempre al final si hay items */}
-              <Link
-                href="/plannings/new"
-                className="block rounded-lg transition-opacity hover:opacity-80"
-                style={{
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "var(--card)",
-                  border: "1.5px dashed var(--separator)",
-                  minHeight: "160px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "var(--space-md)",
-                  padding: "var(--space-xxl)",
-                  borderRadius: "var(--radius-lg)",
-                }}
-              >
-                <div
-                  className="w-10 h-10 rounded-pill flex items-center justify-center"
-                  style={{
-                    background: "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))",
-                  }}
-                >
-                  <Plus size={20} style={{ color: "var(--primary)" }} />
-                </div>
-                <div className="text-center">
-                  <p className="text-base font-semibold text-fg m-0">Crear planificación</p>
-                  <p className="text-sm text-fg-secondary m-0 mt-xs">
-                    Diseñá un ciclo de N semanas con rutinas por día.
-                  </p>
-                </div>
-              </Link>
             </div>
-          )}
-        </>
+          </div>
+          {/* Shell de paginación */}
+          <div
+            className="flex items-center justify-between gap-lg py-md px-lg"
+            style={{ borderTop: "1px solid var(--separator-subtle)" }}
+          >
+            <SkeletonLine width={80} height={14} />
+            <div className="flex items-center gap-sm">
+              <SkeletonLine width={84} height={30} className="rounded-pill" />
+              <SkeletonLine width={90} height={30} className="rounded-pill" />
+            </div>
+          </div>
+        </GradientSurface>
+      ) : plannings.length === 0 && !hasActiveFilters ? (
+        /* No hay NINGUNA planificación creada */
+        <GradientSurface>
+          <div className="flex flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+            <CalendarDays size={28} style={{ color: "var(--fg-tertiary)" }} />
+            <p className="text-base font-medium text-fg m-0">
+              No tenés planificaciones
+            </p>
+            <p className="text-sm text-fg-secondary m-0">
+              Creá tu primer ciclo de entrenamiento por semanas y asignalo a tus alumnos.
+            </p>
+            <Link href="/plannings/new" className="mt-sm">
+              <Button variant="primary" size="md" iconLeft={<Plus size={16} />}>
+                Nueva planificación
+              </Button>
+            </Link>
+          </div>
+        </GradientSurface>
+      ) : (
+        <GradientSurface>
+          <div className="flex flex-col min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
+            {plannings.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+                <CalendarDays size={28} style={{ color: "var(--fg-tertiary)" }} />
+                <p className="text-sm text-fg-secondary m-0">
+                  No hay planificaciones que coincidan con los filtros.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
+                {plannings.map((planning) => (
+                  <PlanningCard
+                    key={planning.id}
+                    planning={planning}
+                    href={`/plannings/${planning.id}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Paginación — mismo componente, siempre visible, al pie del contenedor */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+            <Pagination
+              page={page}
+              perPage={PER_PAGE}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
+        </GradientSurface>
       )}
     </div>
   );

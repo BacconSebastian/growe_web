@@ -21,8 +21,9 @@ const DAY_LABELS: Record<DayKey, string> = {
 };
 
 /**
- * DayBadge — pill con color por día de la semana.
- * Usa CSS vars --day-mon ... --day-sun para el fondo.
+ * DayBadge — pill de día de la semana.
+ * Todos los días comparten el mismo color (--day-mon) para evitar el efecto
+ * "arcoíris"; el `day` solo determina el label/title.
  */
 export const DayBadge: React.FC<DayBadgeProps> = ({
   day,
@@ -39,7 +40,7 @@ export const DayBadge: React.FC<DayBadgeProps> = ({
         .filter(Boolean)
         .join(" ")}
       style={{
-        background: `var(--day-${day})`,
+        background: "var(--day-mon)",
         color: "var(--fg)",
       }}
       title={DAY_LABELS[day]}

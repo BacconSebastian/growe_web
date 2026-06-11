@@ -113,11 +113,15 @@ export async function listPlannings(params: {
   page?: number;
   status?: string;
   search?: string;
+  per_page?: number;
+  day_of_week?: string;
 }): Promise<PlanningsListResponse> {
   const query = new URLSearchParams();
   if (params.page) query.set("page", String(params.page));
   if (params.status) query.set("status", params.status);
   if (params.search) query.set("search", params.search);
+  if (params.per_page) query.set("per_page", String(params.per_page));
+  if (params.day_of_week) query.set("day_of_week", params.day_of_week);
   const qs = query.toString();
   return httpFetch<PlanningsListResponse>(`/plannings${qs ? `?${qs}` : ""}`);
 }

@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Save, Loader2 } from "lucide-react";
+import { Save } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -56,7 +56,7 @@ function weekRoutineExToRoutineExercise(
 ): RoutineExercise {
   return {
     id: ex.id,
-    routine_id: 0, // no relevante en este contexto
+    routine_id: 0,
     exercise_id: ex.exercise_id ?? null,
     name: ex.name,
     series: ex.series,
@@ -94,7 +94,6 @@ function buildExercisesPayload(
     );
     const sets = block.sets.map((s) => editableToRoutineSet(s, config));
 
-    // Intentar recuperar superset_group del ejercicio original
     const supersetGroup = supersetGroupMap.get(block._key) ?? null;
 
     return {
@@ -133,8 +132,8 @@ export const WeekRoutineExercisesEditor: React.FC<
     setBlocks(
       sorted.map((ex) => {
         const re = weekRoutineExToRoutineExercise(ex);
-        // Usamos el id del ejercicio como _key para conservar el superset_group lookup
         const block = routineExerciseToBlock(re);
+        // Usamos el id del ejercicio como _key para conservar el superset_group lookup
         return { ...block, _key: String(ex.id) };
       })
     );
@@ -155,24 +154,33 @@ export const WeekRoutineExercisesEditor: React.FC<
     setBlocks((prev) => prev.filter((b) => b._key !== key));
   }, []);
 
-  const handleMoveUp = useCallback((key: string) => {
-    setBlocks((prev) => {
-      const idx = prev.findIndex((b) => b._key === key);
-      if (idx <= 0) return prev;
-      const next = [...prev];
-      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-      return next;
-    });
-  }, []);
+  /**
+   * En este editor, cada bloque es un "grupo" de una sola variante.
+   * onReorderGroup recibe (currentOrderIndex, newGroupPosition 1-based).
+   * Aquí el order_index coincide con la posición en el array de blocks.
+   */
+  const handleReorderGroup = useCallback(
+    (currentOrderIndex: number, newGroupPosition: number) => {
+      setBlocks((prev) => {
+        const idx = prev.findIndex((b) => b.order_index === currentOrderIndex);
+        const target = Math.min(
+          Math.max(newGroupPosition - 1, 0),
+          prev.length - 1
+        );
+        if (idx < 0 || target === idx) return prev;
+        const next = [...prev];
+        const [moved] = next.splice(idx, 1);
+        next.splice(target, 0, moved);
+        // Re-asignar order_index
+        return next.map((b, i) => ({ ...b, order_index: i }));
+      });
+    },
+    []
+  );
 
-  const handleMoveDown = useCallback((key: string) => {
-    setBlocks((prev) => {
-      const idx = prev.findIndex((b) => b._key === key);
-      if (idx < 0 || idx >= prev.length - 1) return prev;
-      const next = [...prev];
-      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-      return next;
-    });
+  // En este editor no se soportan añadir variantes (el snapshot es fijo)
+  const handleAddVariant = useCallback((_orderIndex: number) => {
+    // no-op en el editor de snapshots de planning
   }, []);
 
   const handleSave = async () => {
@@ -194,22 +202,10 @@ export const WeekRoutineExercisesEditor: React.FC<
 
   // ─── Agrupamiento de supersets ────────────────────────────────────────────
 
-  const { groups, standalone, orderedGroupIds } = groupBySupersetGroup(
+  const { groups } = groupBySupersetGroup(
     weekRoutine.exercises.map((ex) => ({ ...ex, _key: String(ex.id) }))
   );
 
-  // Construir el orden visual: intercalar sueltos y grupos
-  // Para simplificar, usamos el orden natural de blocks (ya ordenados por order_index)
-  // Los bloques con mismo superset_group se renderizan agrupados visualmente.
-
-  const supersetGroupKeys = new Set<string>();
-  for (const [, members] of groups) {
-    for (const m of members) {
-      supersetGroupKeys.add(String(m.id));
-    }
-  }
-
-  // Identificar qué bloques tienen superset_group
   const blocksSupersetGroup = new Map<string, string>();
   for (const ex of weekRoutine.exercises) {
     if (ex.superset_group) {
@@ -217,7 +213,6 @@ export const WeekRoutineExercisesEditor: React.FC<
     }
   }
 
-  // Construir render order: grupos + sueltos en orden visual original
   const renderedGroupIds = new Set<string>();
   const renderOrder: Array<
     | { type: "block"; block: ExerciseBlockData; index: number }
@@ -261,20 +256,21 @@ export const WeekRoutineExercisesEditor: React.FC<
     );
   }
 
-  // Recalcular índice global por bloque para numbering correcto
   let displayIndex = 0;
+  // Total de grupos visuales (para el OrderBadge)
+  const totalVisualGroups = renderOrder.length;
+
+  // Suprimir warning de groups no usado (se usa en agrupamiento superset más arriba)
+  void groups;
 
   return (
     <div className="flex flex-col gap-md">
-      {saveError && (
-        <ErrorBanner message={saveError} dismissible />
-      )}
+      {saveError && <ErrorBanner message={saveError} dismissible />}
 
       {/* Lista de ejercicios */}
       <div className="flex flex-col gap-sm">
-        {renderOrder.map((item, itemIdx) => {
+        {renderOrder.map((item) => {
           if (item.type === "superset") {
-            // Wrapper visual para el grupo
             const groupStartIndex = displayIndex;
             displayIndex += item.memberBlocks.length;
             return (
@@ -295,19 +291,22 @@ export const WeekRoutineExercisesEditor: React.FC<
                   </Badge>
                 </div>
                 <div className="flex flex-col gap-0">
-                  {item.memberBlocks.map((block, memberIdx) => (
-                    <ExerciseBlock
-                      key={block._key}
-                      data={block}
-                      index={groupStartIndex + memberIdx}
-                      totalCount={blocks.length}
-                      readOnly={readOnly}
-                      onUpdate={handleUpdate}
-                      onRemove={handleRemove}
-                      onMoveUp={handleMoveUp}
-                      onMoveDown={handleMoveDown}
-                    />
-                  ))}
+                  {item.memberBlocks.map((block, memberIdx) => {
+                    const gIdx = groupStartIndex + memberIdx;
+                    return (
+                      <ExerciseBlock
+                        key={block._key}
+                        variants={[block]}
+                        groupIndex={gIdx}
+                        totalGroups={totalVisualGroups}
+                        readOnly={readOnly}
+                        onUpdate={handleUpdate}
+                        onRemove={handleRemove}
+                        onReorderGroup={handleReorderGroup}
+                        onAddVariant={handleAddVariant}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -316,14 +315,14 @@ export const WeekRoutineExercisesEditor: React.FC<
             return (
               <ExerciseBlock
                 key={item.block._key}
-                data={item.block}
-                index={idx}
-                totalCount={blocks.length}
+                variants={[item.block]}
+                groupIndex={idx}
+                totalGroups={totalVisualGroups}
                 readOnly={readOnly}
                 onUpdate={handleUpdate}
                 onRemove={handleRemove}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
+                onReorderGroup={handleReorderGroup}
+                onAddVariant={handleAddVariant}
               />
             );
           }
@@ -337,7 +336,9 @@ export const WeekRoutineExercisesEditor: React.FC<
           style={{ background: "var(--fill-tertiary)" }}
         >
           <span className="text-xs text-fg-secondary">
-            {savedSuccess ? "Snapshot guardado." : "Editá los ejercicios del snapshot de esta semana."}
+            {savedSuccess
+              ? "Snapshot guardado."
+              : "Editá los ejercicios del snapshot de esta semana."}
           </span>
           <Button
             variant={savedSuccess ? "success" : "primary"}

@@ -15,6 +15,7 @@ interface MultiSelectProps {
   /** Texto base mostrado en el botón (se le agrega el conteo si hay selección). */
   placeholder: string;
   ariaLabel?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -27,6 +28,7 @@ export function MultiSelect({
   onChange,
   placeholder,
   ariaLabel,
+  disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -59,9 +61,11 @@ export function MultiSelect({
         onClick={() => setOpen((o) => !o)}
         aria-label={ariaLabel}
         aria-expanded={open}
+        disabled={disabled}
         className={[
           "h-11 inline-flex items-center gap-sm text-sm rounded-pill border px-lg",
           "bg-fill-tertiary hover:bg-fill-quaternary transition-colors duration-150 cursor-pointer outline-none",
+          "disabled:opacity-50 disabled:cursor-not-allowed",
           hasSelection ? "border-primary" : "border-transparent",
         ].join(" ")}
       >

@@ -3,21 +3,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Save, Plus, Lock, UserPlus } from "lucide-react";
+import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { DayBadge } from "@/components/ui/DayBadge";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SkeletonBox } from "@/components/ui/Skeleton";
-import { Avatar } from "@/components/ui/Avatar";
 
-import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock } from "./ExerciseBlock";
-import { ExercisePickerModal } from "./ExercisePickerModal";
+import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants } from "./ExerciseBlock";
 import { editableToRoutineSet } from "./SetsTable";
 import { AssignRoutineModal } from "@/components/coaching/AssignRoutineModal";
 
@@ -27,8 +24,6 @@ import { getErrorMessage } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveVariablesConfig, getPresetVariablesConfig, buildEmptySet } from "@/lib/exercise-presets";
 import type { Routine, DayOfWeek, ExerciseType, RoutineExerciseSet, VariablesConfig } from "@/lib/api/types";
-// RoutineExerciseSet y VariablesConfig usados en buildRoutinePayload
-import type { ExerciseCatalogItem } from "@/lib/api/exercises";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -57,14 +52,18 @@ type FormValues = z.infer<typeof schema>;
 
 // ─── Days of week config ──────────────────────────────────────────────────────
 
-const ALL_DAYS: { key: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun"; dow: DayOfWeek; label: string }[] = [
-  { key: "mon", dow: "monday",    label: "Lun" },
-  { key: "tue", dow: "tuesday",   label: "Mar" },
+const ALL_DAYS: {
+  key: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+  dow: DayOfWeek;
+  label: string;
+}[] = [
+  { key: "mon", dow: "monday", label: "Lun" },
+  { key: "tue", dow: "tuesday", label: "Mar" },
   { key: "wed", dow: "wednesday", label: "Mié" },
-  { key: "thu", dow: "thursday",  label: "Jue" },
-  { key: "fri", dow: "friday",    label: "Vie" },
-  { key: "sat", dow: "saturday",  label: "Sáb" },
-  { key: "sun", dow: "sunday",    label: "Dom" },
+  { key: "thu", dow: "thursday", label: "Jue" },
+  { key: "fri", dow: "friday", label: "Vie" },
+  { key: "sat", dow: "saturday", label: "Sáb" },
+  { key: "sun", dow: "sunday", label: "Dom" },
 ];
 
 // ─── Helpers de payload ───────────────────────────────────────────────────────
@@ -81,35 +80,52 @@ interface RoutinePayload {
     exercise_type: string;
     is_warmup: boolean;
     order_index: number;
+    variant_order: number;
     sets_data: RoutineExerciseSet[];
     variables_config?: VariablesConfig;
   }>;
 }
 
+/**
+ * buildRoutinePayload — construye el payload para el backend.
+ *
+ * Agrupa los bloques por order_index (grupos de variantes), asigna
+ * order_index secuencial 0,1,2… por grupo y variant_order 0,1,2… dentro del
+ * grupo (por posición ordenada de variant_order actual).
+ */
 function buildRoutinePayload(
   values: FormValues,
   selectedDays: DayOfWeek[],
-  blocks: ExerciseBlockData[]
+  blocks: ExerciseBlockData[],
 ): RoutinePayload {
+  const groups = groupVariants(blocks);
+
+  const exercises: RoutinePayload["exercises"] = [];
+
+  groups.forEach((group, groupIdx) => {
+    group.variants.forEach((block, variantIdx) => {
+      const config = resolveVariablesConfig(block.variables_config, block.exercise_type);
+      const sets_data = block.sets.map((s) => editableToRoutineSet(s, config));
+      exercises.push({
+        exercise_id: block.exercise_id ?? null,
+        name: block.name,
+        series: block.sets.length,
+        repetitions: 0,
+        exercise_type: block.exercise_type,
+        is_warmup: block.is_warmup,
+        order_index: groupIdx,
+        variant_order: variantIdx,
+        sets_data,
+        variables_config: config,
+      });
+    });
+  });
+
   return {
     title: values.title.trim(),
     description: values.description?.trim() || null,
     day_of_week: selectedDays,
-    exercises: blocks.map((block, idx) => {
-      const config = resolveVariablesConfig(block.variables_config, block.exercise_type);
-      const sets_data = block.sets.map((s) => editableToRoutineSet(s, config));
-      return {
-        exercise_id: block.exercise_id ?? null,
-        name: block.name,
-        series: block.sets.length,
-        repetitions: 0, // calculado por el backend
-        exercise_type: block.exercise_type,
-        is_warmup: block.is_warmup,
-        order_index: idx,
-        sets_data,
-        variables_config: config,
-      };
-    }),
+    exercises,
   };
 }
 
@@ -123,12 +139,7 @@ function buildRoutinePayload(
  * - edit-own: editar rutina propia del coach
  * - edit-coach: editar rutina del alumno (solo si created_by === user.id)
  */
-export const RoutineEditor: React.FC<RoutineEditorProps> = ({
-  mode,
-  routineId,
-  studentId,
-  initialSeed,
-}) => {
+export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, studentId, initialSeed }) => {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -141,10 +152,10 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([]);
+  // Lista plana de bloques (incluye variantes)
   const [blocks, setBlocks] = useState<ExerciseBlockData[]>([]);
 
   // Authorship para modo edit-coach
@@ -159,7 +170,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
     register,
     handleSubmit,
     reset,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -195,19 +206,19 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
         setRoutine(r);
         reset({ title: r.title, description: r.description ?? "" });
 
-        const days = r.day_of_week
-          ? Array.isArray(r.day_of_week)
-            ? r.day_of_week
-            : [r.day_of_week]
-          : [];
+        const days = r.day_of_week ? (Array.isArray(r.day_of_week) ? r.day_of_week : [r.day_of_week]) : [];
         setSelectedDays(days);
 
+        // Ordenar por (order_index, variant_order) antes de mapear
         const loadedBlocks = (r.exercises ?? [])
-          .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+          .sort((a, b) => {
+            const oiDiff = (a.order_index ?? 0) - (b.order_index ?? 0);
+            if (oiDiff !== 0) return oiDiff;
+            return (a.variant_order ?? 0) - (b.variant_order ?? 0);
+          })
           .map(routineExerciseToBlock);
         setBlocks(loadedBlocks);
 
-        // Authorship: read-only si mode=edit-coach y created_by !== user.id
         if (mode === "edit-coach" && user && r.created_by !== user.id) {
           setIsReadOnly(true);
         }
@@ -223,81 +234,103 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  const handleToggleDay = (dow: DayOfWeek) => {
-    setSelectedDays((prev) =>
-      prev.includes(dow) ? prev.filter((d) => d !== dow) : [...prev, dow]
-    );
-  };
-
-  const handleUpdateBlock = useCallback(
-    (key: string, updated: Partial<ExerciseBlockData>) => {
-      setBlocks((prev) =>
-        prev.map((b) => (b._key === key ? { ...b, ...updated } : b))
-      );
-    },
-    []
-  );
+  const handleUpdateBlock = useCallback((key: string, updated: Partial<ExerciseBlockData>) => {
+    setBlocks((prev) => prev.map((b) => (b._key === key ? { ...b, ...updated } : b)));
+  }, []);
 
   const handleRemoveBlock = useCallback((key: string) => {
-    setBlocks((prev) => prev.filter((b) => b._key !== key));
-  }, []);
-
-  const handleMoveUp = useCallback((key: string) => {
     setBlocks((prev) => {
-      const idx = prev.findIndex((b) => b._key === key);
-      if (idx <= 0) return prev;
-      const next = [...prev];
-      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-      return next;
+      const filtered = prev.filter((b) => b._key !== key);
+      // Re-normalizar variant_order dentro de los grupos afectados
+      const groups = groupVariants(filtered);
+      const result: ExerciseBlockData[] = [];
+      groups.forEach((group) => {
+        group.variants.forEach((v, vIdx) => {
+          result.push({ ...v, variant_order: vIdx });
+        });
+      });
+      return result;
     });
   }, []);
 
-  const handleMoveDown = useCallback((key: string) => {
+  /**
+   * Reordena el grupo (todas sus variantes) a la posición 1-based dada.
+   * orderIndex = order_index actual del grupo; newGroupPosition = nueva posición 1-based.
+   */
+  const handleReorderGroup = useCallback((currentOrderIndex: number, newGroupPosition: number) => {
     setBlocks((prev) => {
-      const idx = prev.findIndex((b) => b._key === key);
-      if (idx < 0 || idx >= prev.length - 1) return prev;
-      const next = [...prev];
-      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-      return next;
+      const groups = groupVariants(prev);
+      const currentGroupIdx = groups.findIndex((g) => g.variants.some((v) => v.order_index === currentOrderIndex));
+      if (currentGroupIdx < 0) return prev;
+
+      const targetIdx = Math.min(Math.max(newGroupPosition - 1, 0), groups.length - 1);
+      if (targetIdx === currentGroupIdx) return prev;
+
+      // Mover grupo en el array de grupos
+      const reordered = [...groups];
+      const [moved] = reordered.splice(currentGroupIdx, 1);
+      reordered.splice(targetIdx, 0, moved);
+
+      // Aplanar y re-asignar order_index
+      const result: ExerciseBlockData[] = [];
+      reordered.forEach((group, gIdx) => {
+        group.variants.forEach((v) => {
+          result.push({ ...v, order_index: gIdx });
+        });
+      });
+      return result;
     });
   }, []);
 
-  const handleSelectExercise = (
-    ex: ExerciseCatalogItem,
-    exerciseType: ExerciseType
-  ) => {
-    const config =
-      exerciseType === "custom"
-        ? { version: 1 as const, variables: [] }
-        : getPresetVariablesConfig(exerciseType);
+  // ── Creación de bloques sin nombre (el buscador inline vive en ExerciseBlock) ──
 
-    const defaultSetRaw = buildEmptySet(config);
-    const defaultSet: Record<string, string> = {};
-    for (const [k, v] of Object.entries(defaultSetRaw)) {
-      if (typeof v === "string") {
-        defaultSet[k] = v;
+  const buildEmptyBlock = useCallback(
+    (orderIndex: number, variantOrder: number, keyPrefix: string): ExerciseBlockData => {
+      const exerciseType: ExerciseType = "weight";
+      const config = getPresetVariablesConfig(exerciseType);
+      const defaultSetRaw = buildEmptySet(config);
+      const defaultSet: Record<string, string> = {};
+      for (const [k, v] of Object.entries(defaultSetRaw)) {
+        if (typeof v === "string") defaultSet[k] = v;
       }
-    }
-    if (exerciseType === "superset") {
-      defaultSet.alias = "A";
-    }
+      return {
+        _key: `${keyPrefix}-${Date.now()}-${Math.random()}`,
+        routine_exercise_id: null,
+        exercise_id: null,
+        name: "",
+        exercise_type: exerciseType,
+        is_warmup: false,
+        variables_config: config,
+        sets: [defaultSet as ExerciseBlockData["sets"][number]],
+        order_index: orderIndex,
+        variant_order: variantOrder,
+      };
+    },
+    [],
+  );
 
-    const newBlock: ExerciseBlockData = {
-      _key: `new-${Date.now()}-${Math.random()}`,
-      exercise_id: ex.id,
-      name: ex.name,
-      exercise_type: exerciseType,
-      is_warmup: false,
-      variables_config: config,
-      sets: [defaultSet],
-      order_index: blocks.length,
-    };
+  const handleAddExercise = useCallback(() => {
+    setBlocks((prev) => {
+      // order_index único (máximo + 1) → garantiza un grupo nuevo, nunca un suplente.
+      const nextOrder =
+        prev.length > 0 ? Math.max(...prev.map((b) => b.order_index)) + 1 : 0;
+      return [...prev, buildEmptyBlock(nextOrder, 0, "new")];
+    });
+  }, [buildEmptyBlock]);
 
-    setBlocks((prev) => [...prev, newBlock]);
-  };
+  const handleAddVariant = useCallback(
+    (orderIndex: number) => {
+      setBlocks((prev) => {
+        const groups = groupVariants(prev);
+        const group = groups.find((g) => g.variants.some((v) => v.order_index === orderIndex));
+        const maxVariantOrder = group ? Math.max(...group.variants.map((v) => v.variant_order)) + 1 : 1;
+        return [...prev, buildEmptyBlock(orderIndex, maxVariantOrder, "new-variant")];
+      });
+    },
+    [buildEmptyBlock],
+  );
 
   const onSubmit = handleSubmit(async (values) => {
-    // Defensa en profundidad para authorship
     if (isReadOnly) {
       setSaveError("No tenés permiso para editar esta rutina.");
       return;
@@ -308,9 +341,18 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
       return;
     }
 
-    if (blocks.length === 0) {
+    const groups = groupVariants(blocks);
+    if (groups.length === 0) {
       setSaveError("Agregá al menos un ejercicio antes de guardar.");
       return;
+    }
+
+    // Validar que no haya ejercicios sin nombre (buscador inline sin elegir)
+    for (const block of blocks) {
+      if (!block.name.trim()) {
+        setSaveError("Hay un ejercicio sin elegir. Buscá un ejercicio o quitá el bloque vacío.");
+        return;
+      }
     }
 
     // Validar que cada bloque tenga al menos 1 serie
@@ -326,9 +368,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
       if (block.exercise_type === "superset") {
         for (let i = 0; i < block.sets.length; i++) {
           if (!block.sets[i].alias) {
-            setSaveError(
-              `El ejercicio "${block.name}" (superset) tiene una serie sin alias. Completá el campo Alias.`
-            );
+            setSaveError(`El ejercicio "${block.name}" (superset) tiene una serie sin alias. Completá el campo Alias.`);
             return;
           }
         }
@@ -340,7 +380,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
 
     try {
       const payload = buildRoutinePayload(values, selectedDays, blocks);
-      // El backend acepta el mismo shape RoutinePayload en Create/Update aunque Partial<Routine> sea más estricto en el tipo TS.
       const partialPayload = payload as unknown as Partial<Routine>;
 
       if (mode === "create-own") {
@@ -422,8 +461,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
     );
   }
 
-  // ─── Detección de "no encontrado" ─────────────────────────────────────────
-
   if (mode !== "create-own" && !routine && !loading) {
     return (
       <div className="flex flex-col gap-lg items-start">
@@ -439,7 +476,9 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const showSidePanel = mode === "edit-own";
+  const groups = groupVariants(blocks);
+  const showStudentsSelect = mode === "create-own" || mode === "edit-own";
+  const assignedCount = (routine?.shares ?? []).filter((s) => s.status === "active").length;
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -460,258 +499,128 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
         </div>
       )}
 
-      <div
-        className="flex gap-xxl"
-        style={showSidePanel ? { alignItems: "flex-start" } : undefined}
-      >
-        {/* ─── Columna principal ──────────────────────────────────────────── */}
-        <div className="flex flex-col gap-lg flex-1 min-w-0">
+      <div className="flex flex-col gap-lg">
+        {/* Barra superior: nombre + días + alumnos + acciones */}
+        <div className="flex flex-col gap-sm">
+          <div className="flex items-center gap-md flex-wrap">
+            <input
+              {...register("title")}
+              disabled={isReadOnly}
+              placeholder="Nombre de la rutina..."
+              className="flex-1 min-w-[200px] h-11 rounded-pill px-lg bg-fill-tertiary text-fg placeholder-fg-tertiary text-base font-semibold border outline-none transition-colors focus:border-primary disabled:cursor-default"
+              style={{
+                borderColor: errors.title ? "var(--destructive)" : "transparent",
+              }}
+            />
 
-          {/* Header: nombre + descripción + acciones */}
-          <div className="flex flex-col gap-sm">
-            <div className="flex items-start gap-lg flex-wrap">
-              <div className="flex flex-col gap-xs flex-1 min-w-0">
-                {/* Nombre inline */}
-                <input
-                  {...register("title")}
-                  disabled={isReadOnly}
-                  placeholder="Nombre de la rutina..."
-                  className={[
-                    "w-full bg-transparent text-fg placeholder-fg-tertiary outline-none transition-colors",
-                    "text-display font-bold border-b-2",
-                    errors.title
-                      ? "border-destructive"
-                      : "border-transparent focus:border-primary",
-                    isReadOnly ? "cursor-default" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ lineHeight: 1.2, padding: "2px 0" }}
-                />
-                {errors.title && (
-                  <p className="text-xxs text-destructive m-0">{errors.title.message}</p>
-                )}
+            <MultiSelect
+              options={ALL_DAYS.map((d) => ({ value: d.dow, label: d.label }))}
+              selected={selectedDays}
+              onChange={(vals) => setSelectedDays(ALL_DAYS.filter((d) => vals.includes(d.dow)).map((d) => d.dow))}
+              placeholder="Días asignados"
+              ariaLabel="Días asignados"
+              disabled={isReadOnly}
+            />
 
-                {/* Descripción inline */}
-                <input
-                  {...register("description")}
-                  disabled={isReadOnly}
-                  placeholder="Descripción opcional..."
-                  className={[
-                    "w-full bg-transparent text-fg-secondary placeholder-fg-tertiary outline-none transition-colors",
-                    "text-base border-b",
-                    "border-transparent focus:border-primary",
-                    isReadOnly ? "cursor-default" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ padding: "2px 0" }}
-                />
-              </div>
-
-              {/* Botones de acción */}
-              {!isReadOnly && (
-                <div className="flex items-center gap-sm flex-shrink-0 flex-wrap">
-                  {(mode === "edit-own" || mode === "edit-coach") && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleDuplicate}
-                      loading={saving}
-                      iconLeft={<Copy size={14} />}
-                    >
-                      Duplicar
-                    </Button>
-                  )}
-                  {mode === "edit-own" && (
-                    <Button
-                      type="button"
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      iconLeft={<Trash2 size={14} />}
-                    >
-                      Eliminar
-                    </Button>
-                  )}
-                  <Button
-                    type="submit"
-                    variant={savedSuccess ? "success" : "primary"}
-                    size="sm"
-                    loading={saving}
-                    iconLeft={<Save size={14} />}
-                  >
-                    {savedSuccess ? "¡Guardado!" : "Guardar"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Banner error de guardado */}
-          {saveError && (
-            <ErrorBanner message={saveError} dismissible />
-          )}
-
-          {/* Días de entrenamiento */}
-          <Card>
-            <h3 className="text-base font-semibold text-fg m-0 mb-md">
-              Días de entrenamiento
-            </h3>
-            <div className="flex gap-sm flex-wrap">
-              {ALL_DAYS.map(({ key, dow, label }) => {
-                const active = selectedDays.includes(dow);
-                return (
-                  <button
-                    key={dow}
-                    type="button"
-                    disabled={isReadOnly}
-                    onClick={() => handleToggleDay(dow)}
-                    className="transition-opacity"
-                    style={{ opacity: isReadOnly ? 0.6 : 1, cursor: isReadOnly ? "default" : "pointer" }}
-                  >
-                    <DayBadge day={key}>
-                      <span
-                        style={
-                          !active
-                            ? {
-                                background: "var(--fill-tertiary)",
-                                color: "var(--fg-tertiary)",
-                              }
-                            : undefined
-                        }
-                      >
-                        {label}
-                      </span>
-                    </DayBadge>
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-
-          {/* Lista de ejercicios */}
-          <div className="flex flex-col gap-md">
-            {blocks.map((block, idx) => (
-              <ExerciseBlock
-                key={block._key}
-                data={block}
-                index={idx}
-                totalCount={blocks.length}
-                readOnly={isReadOnly}
-                onUpdate={handleUpdateBlock}
-                onRemove={handleRemoveBlock}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-              />
-            ))}
-
-            {blocks.length === 0 && !isReadOnly && (
-              <div
-                className="rounded-lg p-xxl flex flex-col items-center gap-md text-center"
+            {showStudentsSelect && (
+              <button
+                type="button"
+                disabled={!routineId}
+                onClick={() => routineId && setShowAssignModal(true)}
+                title={!routineId ? "Guardá la rutina primero" : undefined}
+                aria-label="Alumnos asignados"
+                className="flex-shrink-0 h-11 inline-flex items-center gap-sm rounded-pill border px-lg text-sm bg-fill-tertiary hover:bg-fill-quaternary transition-colors duration-150 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: "var(--fill-tertiary)",
-                  border: "1.5px dashed var(--separator)",
+                  borderColor: assignedCount > 0 ? "var(--primary)" : "transparent",
                 }}
               >
-                <p className="text-base text-fg-secondary m-0">
-                  Esta rutina no tiene ejercicios todavía.
-                </p>
-                <p className="text-sm text-fg-tertiary m-0">
-                  Hacé clic en "Agregar ejercicio" para empezar.
-                </p>
-              </div>
+                <Users size={15} className="text-fg-tertiary" />
+                <span className={assignedCount > 0 ? "text-fg" : "text-fg-secondary"}>
+                  {assignedCount > 0 ? `Alumnos asignados (${assignedCount})` : "Alumnos asignados"}
+                </span>
+                <ChevronDown size={14} className="text-fg-tertiary" />
+              </button>
+            )}
+
+            {!isReadOnly && (
+              <>
+                {(mode === "edit-own" || mode === "edit-coach") && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    onClick={handleDuplicate}
+                    loading={saving}
+                    iconLeft={<Copy size={16} />}
+                  >
+                    Copiar
+                  </Button>
+                )}
+                {mode === "edit-own" && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="md"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    iconLeft={<Trash2 size={16} />}
+                  >
+                    Eliminar
+                  </Button>
+                )}
+                <Button
+                  type="submit"
+                  variant={savedSuccess ? "success" : "primary"}
+                  size="md"
+                  loading={saving}
+                  iconLeft={<Save size={16} />}
+                >
+                  {savedSuccess ? "¡Guardado!" : "Guardar"}
+                </Button>
+              </>
             )}
           </div>
 
-          {/* Botón agregar ejercicio */}
-          {!isReadOnly && (
-            <Button
-              type="button"
-              variant="outline"
-              size="md"
-              className="w-full"
-              onClick={() => setShowExercisePicker(true)}
-              iconLeft={<Plus size={16} />}
-            >
-              Agregar ejercicio
-            </Button>
-          )}
+          {errors.title && <p className="text-xxs text-destructive m-0">{errors.title.message}</p>}
         </div>
 
-        {/* ─── Side panel (solo edit-own) ─────────────────────────────────── */}
-        {showSidePanel && (
-          <aside
-            className="flex flex-col gap-lg flex-shrink-0"
-            style={{ width: "300px" }}
-          >
-            {/* Card: Asignada a */}
-            <Card>
-              <h3 className="text-base font-semibold text-fg m-0 mb-md">Asignada a</h3>
-              {/* TODO: No hay endpoint para listar alumnos asignados a una rutina específica.
-                   El backend expone RoutineShare en routine.shares — se usa eso. */}
-              {routine && (routine.shares ?? []).filter((s) => s.status === "active").length > 0 ? (
-                <div className="flex flex-col gap-xs mb-md">
-                  {(routine.shares ?? [])
-                    .filter((s) => s.status === "active")
-                    .map((share) => (
-                      <div key={share.id} className="flex items-center gap-sm">
-                        <Avatar
-                          src={share.sharedWith?.avatar_url ?? null}
-                          initials={share.sharedWith?.username?.slice(0, 2).toUpperCase() ?? "?"}
-                          size="sm"
-                        />
-                        <span className="text-sm text-fg">
-                          {share.sharedWith?.username ?? "Alumno"}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="text-sm text-fg-tertiary m-0 mb-md">
-                  Ningún alumno tiene esta rutina asignada.
-                </p>
-              )}
-              {/* Botón "Asignar a alumno" — solo disponible en edit-own con rutina guardada */}
-              {mode === "edit-own" && routineId && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setShowAssignModal(true)}
-                  iconLeft={<UserPlus size={14} />}
-                >
-                  Asignar a alumno
-                </Button>
-              )}
-            </Card>
+        {saveError && <ErrorBanner message={saveError} dismissible />}
 
-            {/* Card: Detalles */}
-            <Card>
-              <h3 className="text-base font-semibold text-fg m-0 mb-md">Detalles</h3>
-              <dl className="m-0 flex flex-col gap-sm">
-                <DetailRow label="Creada" value={routine?.createdAt ? formatDate(routine.createdAt) : "—"} />
-                <DetailRow label="Última edición" value={routine?.updated_at ? formatDate(routine.updated_at) : "—"} />
-                <DetailRow label="Total ejercicios" value={String(blocks.length)} />
-                <DetailRow
-                  label="Duración estimada"
-                  value={blocks.length > 0 ? `~${blocks.length * 8} min` : "—"}
-                />
-              </dl>
-            </Card>
-          </aside>
-        )}
+        {/* Lista de ejercicios (por grupos de variantes) */}
+        <div className="flex flex-col gap-lg">
+          {groups.map((group, gIdx) => (
+            <ExerciseBlock
+              key={group.groupKey}
+              variants={group.variants}
+              groupIndex={gIdx}
+              totalGroups={groups.length}
+              readOnly={isReadOnly}
+              onUpdate={handleUpdateBlock}
+              onRemove={handleRemoveBlock}
+              onReorderGroup={handleReorderGroup}
+              onAddVariant={handleAddVariant}
+            />
+          ))}
+
+          {/* Card de "agregar ejercicio" — placeholder punteado clickeable */}
+          {!isReadOnly && (
+            <button
+              type="button"
+              onClick={handleAddExercise}
+              className="w-full flex items-center justify-center gap-sm rounded-lg py-lg text-sm font-semibold transition-colors hover:bg-fill-tertiary"
+              style={{
+                border: "1.5px dashed var(--separator)",
+                color: "var(--fg-secondary)",
+                background: "transparent",
+              }}
+            >
+              <Plus size={18} className="text-fg-tertiary" />
+              {groups.length === 0 ? "Agregá tu primer ejercicio" : "Agregar ejercicio"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Modals */}
-      <ExercisePickerModal
-        open={showExercisePicker}
-        onClose={() => setShowExercisePicker(false)}
-        onSelect={handleSelectExercise}
-      />
-
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Eliminar rutina"
@@ -723,7 +632,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
         onClose={() => setShowDeleteConfirm(false)}
       />
 
-      {/* Modal de asignación a alumno — solo para edit-own con rutina guardada */}
       {showAssignModal && routine && routineId && (
         <AssignRoutineModal
           open={showAssignModal}
@@ -731,33 +639,10 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
           routineTitle={routine.title}
           onClose={() => setShowAssignModal(false)}
           onAssigned={() => {
-            // No cerramos el modal automáticamente — el coach puede asignar
-            // la misma rutina a varios alumnos seguidos.
+            // No cerramos — el coach puede asignar a varios alumnos seguidos.
           }}
         />
       )}
     </form>
   );
 };
-
-// ─── Sub-componente auxiliar ──────────────────────────────────────────────────
-
-const DetailRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="flex justify-between gap-md text-sm">
-    <dt className="text-fg-secondary m-0">{label}</dt>
-    <dd className="text-fg m-0 font-medium text-right">{value}</dd>
-  </div>
-);
-
-function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("es-AR", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return dateStr;
-  }
-}

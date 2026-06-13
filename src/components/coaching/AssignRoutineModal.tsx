@@ -14,15 +14,17 @@
  *   onAssigned   — callback con studentId tras asignación exitosa
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Users, CheckCircle2, Dumbbell } from "lucide-react";
 
 import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Avatar } from "@/components/ui/Avatar";
 import { SkeletonBox } from "@/components/ui/Skeleton";
+import { Pagination } from "@/components/ui/Pagination";
+
+const PER_PAGE = 5;
 
 import { listStudents } from "@/lib/api/coaching";
 import { shareRoutine, listRoutineShares } from "@/lib/api/routines";
@@ -43,9 +45,9 @@ interface AssignRoutineModalProps {
 
 function ListSkeleton() {
   return (
-    <div className="flex flex-col gap-sm">
-      {[1, 2, 3].map((i) => (
-        <SkeletonBox key={i} height={56} />
+    <div className="flex flex-col gap-xs">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <SkeletonBox key={i} height={52} />
       ))}
     </div>
   );
@@ -119,13 +121,27 @@ export const AssignRoutineModal: React.FC<AssignRoutineModalProps> = ({
   onAssigned,
 }) => {
   const [students, setStudents] = useState<StudentListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [assignedStudentIds, setAssignedStudentIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  /** Query aplicada (con debounce) — lo que se manda al backend. */
+  const [appliedQuery, setAppliedQuery] = useState("");
   const [assigningId, setAssigningId] = useState<number | null>(null);
 
-  // Cargar alumnos + shares activos para esta rutina al abrir
+  // Debounce de la búsqueda → resetea a la página 1
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      setAppliedQuery(query.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query, open]);
+
+  // Cargar alumnos (server-side: paginado + búsqueda)
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -134,31 +150,14 @@ export const AssignRoutineModal: React.FC<AssignRoutineModalProps> = ({
       setLoading(true);
       setError(null);
       try {
-        let allStudents: StudentListItem[] = [];
-        let page = 1;
-        while (true) {
-          const res = await listStudents({ page });
-          allStudents = [...allStudents, ...(res.items ?? [])];
-          if (page >= (res.pagination?.total_pages ?? 1)) break;
-          page++;
-        }
-
-        // Verificar cuáles alumnos ya tienen esta rutina asignada (share activo)
-        const shares = await listRoutineShares();
-        const ids = new Set(
-          shares
-            .filter(
-              (s) =>
-                s.routine_id === routineId &&
-                s.status === "active" &&
-                s.shared_with !== null
-            )
-            .map((s) => s.shared_with as number),
-        );
-
+        const res = await listStudents({
+          page,
+          search: appliedQuery || undefined,
+          limit: PER_PAGE,
+        });
         if (!cancelled) {
-          setStudents(allStudents);
-          setAssignedStudentIds(ids);
+          setStudents(res.items ?? []);
+          setTotal(res.pagination?.total ?? 0);
         }
       } catch (err) {
         if (!cancelled) setError(getErrorMessage(err, "No se pudieron cargar los alumnos."));
@@ -168,25 +167,47 @@ export const AssignRoutineModal: React.FC<AssignRoutineModalProps> = ({
     };
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
+  }, [open, page, appliedQuery]);
+
+  // Shares activos de esta rutina (una sola vez al abrir)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listRoutineShares()
+      .then((shares) => {
+        if (cancelled) return;
+        const ids = new Set(
+          shares
+            .filter(
+              (s) =>
+                s.routine_id === routineId &&
+                s.status === "active" &&
+                s.shared_with !== null
+            )
+            .map((s) => s.shared_with as number)
+        );
+        setAssignedStudentIds(ids);
+      })
+      .catch(() => {
+        /* el error de carga de alumnos ya se muestra; los shares son best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, routineId]);
 
   // Limpiar estado al cerrar
   useEffect(() => {
     if (!open) {
       setQuery("");
+      setAppliedQuery("");
+      setPage(1);
       setError(null);
     }
   }, [open]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return students;
-    return students.filter((s) => {
-      const fullName = [s.first_name, s.last_name].filter(Boolean).join(" ").toLowerCase();
-      return fullName.includes(q) || s.username.toLowerCase().includes(q);
-    });
-  }, [students, query]);
 
   const handleAssign = async (student: StudentListItem) => {
     if (assigningId !== null || assignedStudentIds.has(student.id)) return;
@@ -230,55 +251,54 @@ export const AssignRoutineModal: React.FC<AssignRoutineModalProps> = ({
         {/* Error */}
         {error && <ErrorBanner message={error} />}
 
-        {/* Lista */}
+        {/* Lista + paginación (contenedor de alto fijo) */}
         <div
-          className="rounded-lg overflow-hidden"
-          style={{
-            border: "1px solid var(--card-border)",
-            minHeight: "100px",
-            maxHeight: "320px",
-            overflowY: "auto",
-          }}
+          className="rounded-lg overflow-hidden flex flex-col"
+          style={{ border: "1px solid var(--card-border)" }}
         >
-          {loading ? (
-            <div className="p-md">
-              <ListSkeleton />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center gap-md py-xxl px-lg text-center">
-              <Users size={24} className="text-fg-tertiary" />
-              <p className="text-sm text-fg-tertiary m-0">
-                {students.length === 0
-                  ? "No tenés alumnos activos."
-                  : "No hay resultados para esa búsqueda."}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-xs p-sm">
-              {filtered.map((student) => (
-                <StudentRow
-                  key={student.id}
-                  student={student}
-                  isAssigned={assignedStudentIds.has(student.id)}
-                  isAssigning={assigningId === student.id}
-                  onClick={() => handleAssign(student)}
-                />
-              ))}
-            </div>
-          )}
+          <div
+            className="flex flex-col"
+            style={{ minHeight: "316px" }}
+          >
+            {loading ? (
+              <div className="p-sm">
+                <ListSkeleton />
+              </div>
+            ) : students.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-md py-xxl px-lg text-center">
+                <Users size={24} className="text-fg-tertiary" />
+                <p className="text-sm text-fg-tertiary m-0">
+                  {appliedQuery
+                    ? "No hay resultados para esa búsqueda."
+                    : "No tenés alumnos activos."}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-xs p-sm">
+                {students.map((student) => (
+                  <StudentRow
+                    key={student.id}
+                    student={student}
+                    isAssigned={assignedStudentIds.has(student.id)}
+                    isAssigning={assigningId === student.id}
+                    onClick={() => handleAssign(student)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Paginación — siempre presente (VIEW_BASES base #4) */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+            <Pagination
+              page={page}
+              perPage={PER_PAGE}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
 
-        {/* Cerrar */}
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            disabled={assigningId !== null}
-          >
-            Cerrar
-          </Button>
-        </div>
       </div>
     </Modal>
   );

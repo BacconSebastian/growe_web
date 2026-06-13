@@ -116,6 +116,11 @@
   --overlay-subtle: rgba(0, 0, 0, 0.25);
   --overlay-medium: rgba(0, 0, 0, 0.55);
   --overlay-heavy: rgba(0, 0, 0, 0.85);
+  /* Overlays para galería de media */
+  --overlay-video-scrim: rgba(0, 0, 0, 0.35);
+  --overlay-play-bg: rgba(255, 255, 255, 0.25);
+  --overlay-label-bg: rgba(0, 0, 0, 0.55);
+  --overlay-label-fg: rgba(255, 255, 255, 0.9);
 
   /* === SIDEBAR === */
   --sidebar-bg: #1C1C1E;
@@ -228,6 +233,11 @@
   --overlay-subtle: rgba(0, 0, 0, 0.25);
   --overlay-medium: rgba(0, 0, 0, 0.55);
   --overlay-heavy: rgba(0, 0, 0, 0.85);
+  /* Overlays para galería de media */
+  --overlay-video-scrim: rgba(0, 0, 0, 0.35);
+  --overlay-play-bg: rgba(255, 255, 255, 0.25);
+  --overlay-label-bg: rgba(0, 0, 0, 0.55);
+  --overlay-label-fg: rgba(255, 255, 255, 0.9);
 
   --sidebar-bg: #FFFFFF;
   --sidebar-border: rgba(60, 60, 67, 0.29);

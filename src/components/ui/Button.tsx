@@ -2,6 +2,7 @@ import React from "react";
 
 type ButtonVariant =
   | "primary"
+  | "primarySoft"
   | "outline"
   | "ghost"
   | "secondary"
@@ -27,6 +28,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     "bg-primary text-on-primary border-transparent shadow-[0_2px_12px_var(--primary-alpha-30)] hover:-translate-y-px hover:brightness-110 hover:shadow-[0_5px_18px_var(--primary-alpha-30)] focus-visible:ring-[var(--primary)]",
+  // Azul tonal: fondo + borde (no sólido). Para acciones secundarias destacadas.
+  primarySoft:
+    "bg-[var(--primary-alpha-12)] text-primary border-[var(--primary)] hover:bg-[var(--primary-alpha-20)] hover:-translate-y-px focus-visible:ring-[var(--primary)]",
   outline:
     "bg-transparent text-primary border-primary hover:bg-primary-alpha-08 hover:-translate-y-px focus-visible:ring-[var(--primary)]",
   ghost:

@@ -1,9 +1,12 @@
 "use client";
 
-import React from "react";
-import { X, Plus } from "lucide-react";
+import React, { useState } from "react";
+import { Plus, Clock, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import type { VariablesConfig, RoutineExerciseSet } from "@/lib/api/types";
 import { getVariableDisplayLabel } from "@/lib/exercise-presets";
+import { RestTimerModal } from "./RestTimerModal";
+import { formatTimerTime } from "@/lib/timer";
 
 // Tipo interno de edición: las celdas son strings para poder tipear valores parciales.
 // Las variables canónicas se almacenan como props planas (string),
@@ -34,6 +37,8 @@ interface SetsTableProps {
   onSetChange: (index: number, key: string, value: string) => void;
   onAddSet: () => void;
   onRemoveSet: (index: number) => void;
+  /** Si true, oculta el botón "Añadir serie" (cuando el padre lo renderiza). */
+  hideAddButton?: boolean;
 }
 
 /**
@@ -52,100 +57,58 @@ export const SetsTable: React.FC<SetsTableProps> = ({
   onSetChange,
   onAddSet,
   onRemoveSet,
+  hideAddButton = false,
 }) => {
   const isSuperset = exerciseType === "superset";
   const variables = config?.variables ?? [];
 
-  // Las columnas son: [alias (superset)], [rest_time], [variables del config], [eliminar]
-  const hasRestTime = true;
-
-  // Calcula si hace falta scroll horizontal
-  const totalCols =
-    (isSuperset ? 1 : 0) +
-    variables.length +
-    (hasRestTime ? 1 : 0) +
-    1 /* nro serie */ +
-    1; /* eliminar */
-
-  const needsScroll = totalCols > 6;
+  // Índice de la serie cuyo modal de descanso está abierto (null = cerrado).
+  const [timerSetIndex, setTimerSetIndex] = useState<number | null>(null);
 
   return (
     <div className="flex flex-col gap-sm">
-      <div
-        style={
-          needsScroll
-            ? { overflowX: "auto", WebkitOverflowScrolling: "touch" }
-            : undefined
-        }
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            minWidth: needsScroll ? "600px" : undefined,
-          }}
-        >
-          <thead>
-            <tr>
-              <th
-                className="text-xs font-semibold text-fg-tertiary text-left py-xs pr-md"
-                style={{ width: "48px" }}
+      {sets.map((set, idx) => {
+        const rt = set.rest_time && set.rest_time !== "" ? Number(set.rest_time) : 0;
+        const restLabel = rt > 0 ? formatTimerTime(rt) : "Descanso";
+        return (
+          <div
+            key={idx}
+            className="rounded-lg p-md flex flex-col gap-sm"
+            style={{
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--separator-subtle)",
+            }}
+          >
+            {/* Fila superior: número + inputs */}
+            <div className="flex items-center gap-md">
+              <span
+                className="inline-flex items-center justify-center w-7 h-7 rounded-pill text-xs font-bold flex-shrink-0"
+                style={
+                  isWarmup
+                    ? { background: "var(--warning-alpha-20)", color: "var(--warning)" }
+                    : {
+                        background: "var(--primary-alpha-16)",
+                        color: "var(--primary)",
+                        border: "1px solid var(--primary-alpha-30)",
+                      }
+                }
               >
-                #
-              </th>
-              {isSuperset && (
-                <th className="text-xs font-semibold text-fg-tertiary text-left py-xs pr-md">
-                  Alias
-                </th>
-              )}
-              {variables.map((varDef) => (
-                <th
-                  key={varDef.key}
-                  className="text-xs font-semibold text-fg-tertiary text-left py-xs pr-md"
-                >
-                  {getVariableDisplayLabel(varDef)}
-                </th>
-              ))}
-              <th className="text-xs font-semibold text-fg-tertiary text-left py-xs pr-md">
-                Descanso (s)
-              </th>
-              {!readOnly && <th style={{ width: "36px" }} />}
-            </tr>
-          </thead>
-          <tbody>
-            {sets.map((set, idx) => (
-              <tr key={idx}>
-                {/* Número de serie con indicador warmup */}
-                <td className="py-xs pr-md">
-                  <span
-                    className={[
-                      "inline-flex items-center justify-center w-7 h-7 rounded-pill text-xs font-bold",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    style={
-                      isWarmup
-                        ? {
-                            background: "var(--warning-alpha-16)",
-                            color: "var(--warning)",
-                          }
-                        : {
-                            background: "var(--primary-alpha-12)",
-                            color: "var(--primary)",
-                          }
-                    }
-                  >
-                    {isWarmup ? "W" : idx + 1}
-                  </span>
-                </td>
+                {isWarmup ? "W" : idx + 1}
+              </span>
 
-                {/* Alias (superset) */}
+              <div className="flex-1 flex flex-wrap gap-md">
                 {isSuperset && (
-                  <td className="py-xs pr-sm" style={{ minWidth: "64px" }}>
+                  <div className="flex flex-col gap-xxs" style={{ width: "64px" }}>
+                    <label className="text-xxs font-semibold text-fg-tertiary uppercase tracking-wide">
+                      Alias
+                    </label>
                     {readOnly ? (
-                      <span className="text-sm text-fg font-semibold px-sm py-xxs rounded-md" style={{ background: "var(--fill-tertiary)" }}>
+                      <div
+                        className="h-9 flex items-center justify-center rounded-sm text-lg font-semibold text-fg"
+                        style={{ background: "var(--fill-tertiary)" }}
+                      >
                         {set.alias || "—"}
-                      </span>
+                      </div>
                     ) : (
                       <input
                         type="text"
@@ -154,25 +117,35 @@ export const SetsTable: React.FC<SetsTableProps> = ({
                           onSetChange(idx, "alias", e.target.value.toUpperCase().slice(0, 2))
                         }
                         maxLength={2}
-                        className="w-12 h-9 bg-fill-tertiary text-fg border border-transparent rounded-md text-sm text-center outline-none focus:border-primary focus:bg-fill-quaternary"
+                        className="h-9 text-fg border border-transparent rounded-sm text-lg font-medium text-center outline-none focus:border-primary"
+                        style={{ background: "var(--fill-tertiary)" }}
                         placeholder="A"
                       />
                     )}
-                  </td>
+                  </div>
                 )}
 
-                {/* Variables dinámicas */}
                 {variables.map((varDef) => {
                   const rawValue = varDef.is_custom
                     ? (set._customVars ?? {})[varDef.key] ?? ""
                     : (set as Record<string, string | undefined>)[varDef.key] ?? "";
 
                   return (
-                    <td key={varDef.key} className="py-xs pr-sm" style={{ minWidth: "72px" }}>
+                    <div
+                      key={varDef.key}
+                      className="flex flex-col gap-xxs flex-1"
+                      style={{ minWidth: "96px" }}
+                    >
+                      <label className="text-xxs font-semibold text-fg-tertiary uppercase tracking-wide truncate">
+                        {getVariableDisplayLabel(varDef)}
+                      </label>
                       {readOnly ? (
-                        <span className="text-sm text-fg">
+                        <div
+                          className="h-9 flex items-center justify-center rounded-sm text-lg font-medium text-fg"
+                          style={{ background: "var(--fill-tertiary)" }}
+                        >
                           {rawValue || "—"}
-                        </span>
+                        </div>
                       ) : (
                         <input
                           type="number"
@@ -182,72 +155,81 @@ export const SetsTable: React.FC<SetsTableProps> = ({
                           onChange={(e) =>
                             onSetChange(
                               idx,
-                              varDef.is_custom
-                                ? `_custom_${varDef.key}`
-                                : varDef.key,
+                              varDef.is_custom ? `_custom_${varDef.key}` : varDef.key,
                               e.target.value
                             )
                           }
-                          className="w-full h-9 bg-fill-tertiary text-fg border border-transparent rounded-md text-sm text-center outline-none focus:border-primary focus:bg-fill-quaternary px-xs"
+                          className="h-9 w-full text-fg border border-transparent rounded-sm text-lg font-medium text-center outline-none focus:border-primary px-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
+                          style={{ background: "var(--fill-tertiary)" }}
                         />
                       )}
-                    </td>
+                    </div>
                   );
                 })}
+              </div>
+            </div>
 
-                {/* Descanso */}
-                <td className="py-xs pr-sm" style={{ minWidth: "80px" }}>
-                  {readOnly ? (
-                    <span className="text-sm text-fg">
-                      {set.rest_time ? `${set.rest_time}s` : "—"}
-                    </span>
-                  ) : (
-                    <input
-                      type="number"
-                      value={set.rest_time ?? ""}
-                      min={0}
-                      step={10}
-                      onChange={(e) => onSetChange(idx, "rest_time", e.target.value)}
-                      className="w-full h-9 bg-fill-tertiary text-fg border border-transparent rounded-md text-sm text-center outline-none focus:border-primary focus:bg-fill-quaternary px-xs"
-                      placeholder="60"
-                    />
-                  )}
-                </td>
+            {/* Fila inferior: eliminar serie + descanso (alineada con los inputs) */}
+            {!readOnly && (
+              <div className="flex items-center gap-sm pl-[40px]">
+                <button
+                  type="button"
+                  onClick={() => onRemoveSet(idx)}
+                  disabled={sets.length <= 1}
+                  className="w-10 h-9 flex items-center justify-center rounded-sm flex-shrink-0 transition-opacity hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{
+                    background: "var(--destructive-alpha-12)",
+                    color: "var(--destructive)",
+                    border: "1px solid var(--destructive)",
+                  }}
+                  aria-label={`Eliminar serie ${idx + 1}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimerSetIndex(idx)}
+                  className="flex-1 h-9 inline-flex items-center justify-center gap-xs rounded-sm text-sm text-fg-secondary border border-transparent outline-none hover:border-primary transition-colors cursor-pointer tabular-nums"
+                  style={{ background: "var(--fill-tertiary)" }}
+                  title="Configurar descanso"
+                >
+                  <Clock size={13} className="text-fg-tertiary" />
+                  {restLabel}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
-                {/* Eliminar serie */}
-                {!readOnly && (
-                  <td className="py-xs">
-                    <button
-                      type="button"
-                      onClick={() => onRemoveSet(idx)}
-                      disabled={sets.length <= 1}
-                      className="w-7 h-7 flex items-center justify-center rounded-pill text-fg-tertiary hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label={`Eliminar serie ${idx + 1}`}
-                    >
-                      <X size={14} />
-                    </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Agregar serie */}
-      {!readOnly && (
-        <button
+      {/* Añadir serie (full-width) — se puede ocultar si el padre lo renderiza */}
+      {!readOnly && !hideAddButton && (
+        <Button
           type="button"
+          variant="primarySoft"
+          size="md"
+          className="w-full"
+          iconLeft={<Plus size={16} />}
           onClick={onAddSet}
-          className="flex items-center gap-xs text-sm text-fg-secondary hover:text-fg transition-colors py-xs px-md rounded-pill"
-          style={{
-            background: "var(--fill-tertiary)",
-            border: "1px dashed var(--separator)",
-          }}
         >
-          <Plus size={14} />
-          Agregar serie
-        </button>
+          Añadir serie
+        </Button>
+      )}
+
+      {/* Modal de descanso por serie */}
+      {timerSetIndex !== null && (
+        <RestTimerModal
+          open={timerSetIndex !== null}
+          initialSeconds={
+            sets[timerSetIndex]?.rest_time && sets[timerSetIndex].rest_time !== ""
+              ? Number(sets[timerSetIndex].rest_time)
+              : null
+          }
+          onClose={() => setTimerSetIndex(null)}
+          onSave={(seconds) =>
+            onSetChange(timerSetIndex, "rest_time", seconds > 0 ? String(seconds) : "")
+          }
+        />
       )}
     </div>
   );

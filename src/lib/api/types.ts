@@ -161,6 +161,8 @@ export interface RoutineExercise {
    * Para presets sin personalización, refleja el config canónico del preset.
    */
   variables_config?: VariablesConfig;
+  /** UUID v4 del grupo superset; null = ejercicio suelto. */
+  superset_group?: string | null;
   description?: string | null;
   exercise?: { id: number; name: string; description?: string | null } | null;
   createdAt?: string;

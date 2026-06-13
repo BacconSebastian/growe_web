@@ -12,6 +12,7 @@ import {
   Images,
   Users,
   MessageCircle,
+  Link2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -48,6 +49,8 @@ export interface ExerciseBlockData {
   order_index: number;
   /** 0 = principal, 1+ = suplente */
   variant_order: number;
+  /** UUID v4 del grupo superset; null = ejercicio suelto. */
+  superset_group: string | null;
 }
 
 /**
@@ -76,12 +79,13 @@ export function groupVariants(blocks: ExerciseBlockData[]): ExerciseGroup[] {
   // Ordenar por order_index
   const sortedKeys = Array.from(map.keys()).sort((a, b) => a - b);
 
-  return sortedKeys.map((orderIndex, groupIdx) => {
+  return sortedKeys.map((orderIndex) => {
     const variants = (map.get(orderIndex) ?? []).sort(
       (a, b) => a.variant_order - b.variant_order
     );
     return {
-      groupKey: `group-${groupIdx}-${orderIndex}`,
+      // Key estable basada en la primera variante → no remonta al reordenar/combinar.
+      groupKey: variants[0]?._key ?? `group-${orderIndex}`,
       variants,
     };
   });
@@ -103,6 +107,15 @@ interface ExerciseBlockProps {
   onReorderGroup: (orderIndex: number, newGroupPosition: number) => void;
   /** Callback para agregar suplente — crea una variante sin nombre en el grupo */
   onAddVariant: (orderIndex: number) => void;
+  // ── Combine mode (opcionales — no pasan desde WeekRoutineExercisesEditor) ──
+  /** Arranca el modo combinar con este grupo como primer seleccionado. */
+  onStartCombine?: () => void;
+  /** Si true, el editor está en modo "seleccionar para combinar". */
+  combineMode?: boolean;
+  /** Si true, este grupo está seleccionado para ser combinado. */
+  combineSelected?: boolean;
+  /** Toggle la selección de este grupo. */
+  onToggleCombineSelect?: () => void;
 }
 
 // ─── OrderBadge ──────────────────────────────────────────────────────────────
@@ -190,6 +203,10 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   onRemove,
   onReorderGroup,
   onAddVariant,
+  onStartCombine,
+  combineMode = false,
+  combineSelected = false,
+  onToggleCombineSelect,
 }) => {
   // Auto-expandir solo el primer ejercicio de una rutina ya cargada (con nombre).
   // Los bloques nuevos (sin nombre) arrancan contraídos — con el buscador inline.
@@ -230,6 +247,85 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   }, [data?._key, data?.name, readOnly, namingKey, dismissedKeys, data]);
 
   if (!data) return null;
+
+  // ─── Render en modo combinar ─────────────────────────────────────────────
+  // Cuando combineMode=true, renderizamos solo una card compacta con checkbox.
+  if (combineMode) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleCombineSelect}
+        className="w-full flex items-center gap-md px-xl py-md text-left rounded-lg transition-all"
+        style={{
+          border: combineSelected
+            ? "2px solid var(--warning)"
+            : "2px solid var(--separator-subtle)",
+          background: combineSelected
+            ? "var(--warning-alpha-08)"
+            : "var(--fill-tertiary)",
+        }}
+      >
+        {/* Checkbox visual */}
+        <span
+          className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
+          style={{
+            border: combineSelected
+              ? "2px solid var(--warning)"
+              : "2px solid var(--separator)",
+            background: combineSelected
+              ? "var(--warning-alpha-20)"
+              : "transparent",
+          }}
+          aria-checked={combineSelected}
+          role="checkbox"
+        >
+          {combineSelected && (
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden
+            >
+              <path
+                d="M2 6l3 3 5-5"
+                stroke="var(--warning)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </span>
+
+        {/* Nombre + resumen */}
+        <div className="flex-1 min-w-0">
+          <span
+            className={[
+              "text-base truncate block",
+              data.name ? "font-semibold text-fg" : "font-medium italic text-fg-tertiary",
+            ].join(" ")}
+          >
+            {data.name || "Sin nombre"}
+          </span>
+          <p className="text-xs text-fg-tertiary m-0 mt-xxs">
+            {data.sets.length} {data.sets.length === 1 ? "serie" : "series"}
+          </p>
+        </div>
+
+        {/* Número de orden */}
+        <span
+          className="w-7 h-7 rounded-sm flex items-center justify-center text-sm font-bold flex-shrink-0"
+          style={{
+            background: "var(--fill-tertiary)",
+            color: "var(--fg-tertiary)",
+          }}
+        >
+          {groupIndex + 1}
+        </span>
+      </button>
+    );
+  }
 
   const isNaming = !readOnly && namingKey === data._key;
 
@@ -367,7 +463,8 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
                   )}
                   {hasMultipleVariants && (
                     <Badge variant="primary" size="sm">
-                      {variants.length} variantes
+                      {variants.length - 1}{" "}
+                      {variants.length - 1 === 1 ? "variante" : "variantes"}
                     </Badge>
                   )}
                 </div>
@@ -431,69 +528,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
 
   return (
     <div className="flex flex-col gap-sm">
-      {/* ── Selector de variantes (solo si hay más de una) ── */}
-      {hasMultipleVariants && (
-        <div className="flex items-center gap-xs flex-wrap">
-          {variants.map((v, vIdx) => {
-            const isActive = vIdx === safeIdx;
-            return (
-              <button
-                key={v._key}
-                type="button"
-                onClick={() => setActiveVariantIdx(vIdx)}
-                className="px-md py-xs rounded-pill text-xs font-semibold transition-colors border flex items-center gap-xs"
-                style={
-                  isActive
-                    ? {
-                        background: "var(--primary-alpha-12)",
-                        borderColor: "var(--primary)",
-                        color: "var(--primary)",
-                      }
-                    : {
-                        background: "var(--fill-tertiary)",
-                        borderColor: "transparent",
-                        color: "var(--fg-secondary)",
-                      }
-                }
-              >
-                {vIdx === 0 ? "Principal" : `Suplente ${vIdx}`}
-                {/* Botón quitar suplente — solo si no es principal y no es readOnly */}
-                {vIdx > 0 && !readOnly && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Capturar el _key de la variante a borrar ANTES de cambiar el índice activo,
-                      // para no depender de safeIdx en el momento del onConfirm.
-                      setPendingRemoveVariantKey(v._key);
-                      // UX: dejar seleccionada la variante anterior
-                      setActiveVariantIdx(Math.max(0, vIdx - 1));
-                      setShowRemoveVariantConfirm(true);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setPendingRemoveVariantKey(v._key);
-                        setActiveVariantIdx(Math.max(0, vIdx - 1));
-                        setShowRemoveVariantConfirm(true);
-                      }
-                    }}
-                    className="w-4 h-4 flex items-center justify-center rounded-full text-xs leading-none cursor-pointer hover:opacity-70"
-                    style={{ color: "var(--fg-tertiary)" }}
-                    aria-label={`Quitar suplente ${vIdx}`}
-                  >
-                    ×
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Contenedor único: info + comentarios + series ── */}
+      {/* ── Contenedor único: info + variantes + comentarios + series ── */}
       <GradientSurface>
         <div className="px-xl py-lg flex flex-col gap-md">
           {/* Fila 1: Número + Nombre + Acciones */}
@@ -559,6 +594,16 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
                 </IconButton>
               )}
 
+              {/* Combinar con otro ejercicio — solo si no readOnly y se pasó callback */}
+              {!readOnly && onStartCombine && (
+                <IconButton
+                  title="Combinar ejercicios (superset)"
+                  onClick={onStartCombine}
+                >
+                  <Link2 size={15} />
+                </IconButton>
+              )}
+
               {/* Variables config */}
               <IconButton
                 title="Personalizar variables"
@@ -574,6 +619,55 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
               </IconButton>
             </div>
           </div>
+
+          {/* Sección VARIANTES (solo si hay más de una variante) */}
+          {hasMultipleVariants && (
+            <div className="flex flex-col gap-xs">
+              <span
+                className="text-xxs font-semibold uppercase"
+                style={{ color: "var(--fg-tertiary)", letterSpacing: "1px" }}
+              >
+                Variantes
+              </span>
+              <div
+                className="relative rounded-md overflow-hidden p-[2px]"
+                style={{ border: "1px solid var(--separator-subtle)" }}
+              >
+                <div
+                  aria-hidden
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))",
+                  }}
+                />
+                <div className="relative flex gap-xs overflow-x-auto">
+                  {variants.map((v, vIdx) => {
+                    const isActive = vIdx === safeIdx;
+                    return (
+                      <button
+                        key={v._key}
+                        type="button"
+                        onClick={() => setActiveVariantIdx(vIdx)}
+                        className="px-lg py-xs rounded-sm text-sm whitespace-nowrap flex-shrink-0 transition-colors"
+                        style={
+                          isActive
+                            ? {
+                                background: "var(--fill-tertiary)",
+                                color: "var(--fg)",
+                                fontWeight: 600,
+                              }
+                            : { background: "transparent", color: "var(--fg-secondary)" }
+                        }
+                      >
+                        {v.name || (vIdx === 0 ? "Principal" : `Suplente ${vIdx}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Fila 2: Pills galería + suplente */}
           <div className="flex gap-sm">
@@ -620,13 +714,13 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
             )}
           </div>
 
-          {/* Sección: Comentarios (solo si hay routine_exercise_id) */}
-          {data.routine_exercise_id !== null && (
-            <CommentsPreviewCard
-              routineExerciseId={data.routine_exercise_id}
-              onViewAll={() => setShowComments(true)}
-            />
-          )}
+          {/* Sección: Comentarios — siempre visible (incluso en ejercicios/suplentes sin guardar) */}
+          <CommentsPreviewCard
+            routineExerciseId={data.routine_exercise_id}
+            onViewAll={() => {
+              if (data.routine_exercise_id !== null) setShowComments(true);
+            }}
+          />
 
           {/* Sección: Series */}
           <div className="flex flex-col gap-md">
@@ -659,9 +753,19 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
                   size="md"
                   className="flex-1"
                   iconLeft={<Trash2 size={16} />}
-                  onClick={() => setShowRemoveConfirm(true)}
+                  onClick={() => {
+                    // Si la variante activa es un suplente → quitar solo esa variante.
+                    if (safeIdx > 0) {
+                      setPendingRemoveVariantKey(data._key);
+                      setActiveVariantIdx(Math.max(0, safeIdx - 1));
+                      setShowRemoveVariantConfirm(true);
+                    } else {
+                      // Principal → eliminar el grupo completo.
+                      setShowRemoveConfirm(true);
+                    }
+                  }}
                 >
-                  Eliminar ejercicio
+                  {safeIdx > 0 ? "Quitar suplente" : "Eliminar ejercicio"}
                 </Button>
                 <Button
                   type="button"
@@ -747,19 +851,22 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
 // ─── CommentsPreviewCard ──────────────────────────────────────────────────────
 
 interface CommentsPreviewCardProps {
-  routineExerciseId: number;
+  /** null = ejercicio/suplente aún no guardado (sin id) → sin comentarios todavía. */
+  routineExerciseId: number | null;
   onViewAll: () => void;
 }
 
 /**
  * Carga el último comentario del ejercicio y lo muestra en una card compacta.
  * Usa lazy-load (carga al montar, no al abrir el modal).
+ * Si el ejercicio aún no fue guardado (id null), muestra un hint en vez de cargar.
  */
 const CommentsPreviewCard: React.FC<CommentsPreviewCardProps> = ({
   routineExerciseId,
   onViewAll,
 }) => {
-  const [loading, setLoading] = useState(true);
+  const isSaved = routineExerciseId !== null;
+  const [loading, setLoading] = useState(isSaved);
   // null = cargando, undefined = sin comentarios
   const [lastComment, setLastComment] = useState<
     | {
@@ -773,7 +880,14 @@ const CommentsPreviewCard: React.FC<CommentsPreviewCardProps> = ({
   const [commentCount, setCommentCount] = useState(0);
 
   React.useEffect(() => {
+    if (routineExerciseId === null) {
+      setLoading(false);
+      setLastComment(undefined);
+      setCommentCount(0);
+      return;
+    }
     let cancelled = false;
+    setLoading(true);
     import("@/lib/api/comments")
       .then(({ getExerciseComments }) => getExerciseComments(routineExerciseId))
       .then((comments) => {
@@ -832,10 +946,17 @@ const CommentsPreviewCard: React.FC<CommentsPreviewCardProps> = ({
         }}
       >
         {loading ? (
-          <div
-            className="h-10 rounded-md animate-pulse"
-            style={{ background: "var(--fill-tertiary)" }}
-          />
+          /* Skeleton compacto, misma altura que el estado vacío (1 fila) */
+          <div className="flex items-center gap-sm">
+            <div
+              className="w-4 h-4 rounded-full animate-pulse flex-shrink-0"
+              style={{ background: "var(--fill-tertiary)" }}
+            />
+            <div
+              className="h-3 rounded animate-pulse"
+              style={{ background: "var(--fill-tertiary)", width: "50%" }}
+            />
+          </div>
         ) : lastComment ? (
           <button
             type="button"
@@ -864,6 +985,11 @@ const CommentsPreviewCard: React.FC<CommentsPreviewCardProps> = ({
               </p>
             </div>
           </button>
+        ) : !isSaved ? (
+          <div className="flex items-center gap-sm text-fg-tertiary">
+            <MessageCircle size={16} className="opacity-50" />
+            <span className="text-sm">Guardá la rutina para agregar comentarios</span>
+          </div>
         ) : (
           <button
             type="button"
@@ -954,5 +1080,6 @@ export function routineExerciseToBlock(re: RoutineExercise): ExerciseBlockData {
     notes: re.notes ?? undefined,
     order_index: re.order_index,
     variant_order: re.variant_order ?? 0,
+    superset_group: re.superset_group ?? null,
   };
 }

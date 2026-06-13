@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown } from "lucide-react";
+import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown, Link2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,8 +14,9 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SkeletonBox } from "@/components/ui/Skeleton";
 
-import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants } from "./ExerciseBlock";
+import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants, ExerciseGroup } from "./ExerciseBlock";
 import { editableToRoutineSet } from "./SetsTable";
+import { SupersetGroupBorder } from "./SupersetGroupBorder";
 import { AssignRoutineModal } from "@/components/coaching/AssignRoutineModal";
 
 import { getRoutine, createRoutine, updateRoutine, deleteRoutine } from "@/lib/api/routines";
@@ -83,6 +84,7 @@ interface RoutinePayload {
     variant_order: number;
     sets_data: RoutineExerciseSet[];
     variables_config?: VariablesConfig;
+    superset_group: string | null;
   }>;
 }
 
@@ -117,6 +119,7 @@ function buildRoutinePayload(
         variant_order: variantIdx,
         sets_data,
         variables_config: config,
+        superset_group: block.superset_group ?? null,
       });
     });
   });
@@ -163,6 +166,12 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
 
   // Modal de asignación a alumno
   const [showAssignModal, setShowAssignModal] = useState(false);
+
+  // ── Combine mode (superset) ───────────────────────────────────────────────
+  const [combineMode, setCombineMode] = useState<{
+    active: boolean;
+    selected: number[]; // order_index de los grupos seleccionados
+  }>({ active: false, selected: [] });
 
   // ─── React Hook Form ──────────────────────────────────────────────────────
 
@@ -304,6 +313,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
         sets: [defaultSet as ExerciseBlockData["sets"][number]],
         order_index: orderIndex,
         variant_order: variantOrder,
+        superset_group: null,
       };
     },
     [],
@@ -329,6 +339,105 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
     },
     [buildEmptyBlock],
   );
+
+  // ── Handlers de combine mode ──────────────────────────────────────────────
+
+  /** Inicia el modo combinar con orderIndex como primer grupo seleccionado. */
+  const handleStartCombine = useCallback((orderIndex: number) => {
+    setCombineMode({ active: true, selected: [orderIndex] });
+  }, []);
+
+  const handleCancelCombine = useCallback(() => {
+    setCombineMode({ active: false, selected: [] });
+  }, []);
+
+  const handleToggleCombineSelect = useCallback((orderIndex: number) => {
+    setCombineMode((prev) => {
+      const isSelected = prev.selected.includes(orderIndex);
+      return {
+        ...prev,
+        selected: isSelected
+          ? prev.selected.filter((oi) => oi !== orderIndex)
+          : [...prev.selected, orderIndex],
+      };
+    });
+  }, []);
+
+  /**
+   * Guarda la combinación: asigna un UUID compartido a todos los bloques
+   * de los grupos seleccionados, y reordena para que los grupos seleccionados
+   * queden contiguos (en la posición del primer seleccionado, preservando
+   * su orden relativo).
+   */
+  const handleSaveCombine = useCallback(() => {
+    if (combineMode.selected.length < 2) return;
+
+    const uuid = crypto.randomUUID();
+    const selectedSet = new Set(combineMode.selected);
+
+    setBlocks((prev) => {
+      const groups = groupVariants(prev);
+
+      // Separar grupos seleccionados y no seleccionados, preservando orden relativo
+      const selectedGroups: ExerciseGroup[] = [];
+      const remainingGroups: ExerciseGroup[] = [];
+      let insertionIdx = -1;
+
+      // El cluster se inserta en la posición del primer grupo seleccionado
+      // (medida por su posición actual en la lista de grupos, no su order_index)
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        const oi = g.variants[0]?.order_index;
+        if (oi !== undefined && selectedSet.has(oi)) {
+          if (insertionIdx < 0) insertionIdx = remainingGroups.length;
+          selectedGroups.push(g);
+        } else {
+          remainingGroups.push(g);
+        }
+      }
+
+      if (insertionIdx < 0) insertionIdx = remainingGroups.length;
+
+      // Recomponer: no-seleccionados con el cluster en la posición insertionIdx
+      const reordered: ExerciseGroup[] = [
+        ...remainingGroups.slice(0, insertionIdx),
+        ...selectedGroups,
+        ...remainingGroups.slice(insertionIdx),
+      ];
+
+      // Aplanar reasignando order_index secuencial y superset_group
+      const result: ExerciseBlockData[] = [];
+      reordered.forEach((group, gIdx) => {
+        const oi = group.variants[0]?.order_index;
+        const isSelected = oi !== undefined && selectedSet.has(oi);
+        group.variants.forEach((v) => {
+          result.push({
+            ...v,
+            order_index: gIdx,
+            superset_group: isSelected ? uuid : v.superset_group,
+          });
+        });
+      });
+
+      return result;
+    });
+
+    setCombineMode({ active: false, selected: [] });
+  }, [combineMode.selected]);
+
+  /**
+   * Disuelve un superset: setea superset_group=null en todos los bloques
+   * con el UUID dado.
+   */
+  const handleDissolveSuperset = useCallback((supersetGroupId: string) => {
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.superset_group === supersetGroupId
+          ? { ...b, superset_group: null }
+          : b
+      )
+    );
+  }, []);
 
   const onSubmit = handleSubmit(async (values) => {
     if (isReadOnly) {
@@ -360,18 +469,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
       if (block.sets.length === 0) {
         setSaveError(`El ejercicio "${block.name}" no tiene series. Agregá al menos 1.`);
         return;
-      }
-    }
-
-    // Validar alias en supersets
-    for (const block of blocks) {
-      if (block.exercise_type === "superset") {
-        for (let i = 0; i < block.sets.length; i++) {
-          if (!block.sets[i].alias) {
-            setSaveError(`El ejercicio "${block.name}" (superset) tiene una serie sin alias. Completá el campo Alias.`);
-            return;
-          }
-        }
       }
     }
 
@@ -585,24 +682,150 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
 
         {saveError && <ErrorBanner message={saveError} dismissible />}
 
-        {/* Lista de ejercicios (por grupos de variantes) */}
-        <div className="flex flex-col gap-lg">
-          {groups.map((group, gIdx) => (
-            <ExerciseBlock
-              key={group.groupKey}
-              variants={group.variants}
-              groupIndex={gIdx}
-              totalGroups={groups.length}
-              readOnly={isReadOnly}
-              onUpdate={handleUpdateBlock}
-              onRemove={handleRemoveBlock}
-              onReorderGroup={handleReorderGroup}
-              onAddVariant={handleAddVariant}
-            />
-          ))}
+        {/* ── Barra de combine mode ── */}
+        {combineMode.active && !isReadOnly && (
+          <div
+            className="flex items-center gap-md p-md rounded-lg sticky top-4 z-10"
+            style={{
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--warning-alpha-40)",
+              boxShadow: "0 4px 24px var(--warning-alpha-12)",
+            }}
+          >
+            <Link2 size={16} style={{ color: "var(--warning)", flexShrink: 0 }} />
+            <span className="text-sm font-medium text-fg flex-1">
+              Seleccioná los ejercicios a combinar ({combineMode.selected.length} seleccionado{combineMode.selected.length !== 1 ? "s" : ""})
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelCombine}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={combineMode.selected.length < 2}
+              onClick={handleSaveCombine}
+              iconLeft={<Link2 size={14} />}
+            >
+              Combinar
+            </Button>
+          </div>
+        )}
 
-          {/* Card de "agregar ejercicio" — placeholder punteado clickeable */}
-          {!isReadOnly && (
+        {/* Lista de ejercicios (por grupos de variantes, segmentada en clusters) */}
+        <div className="flex flex-col gap-lg">
+          {(() => {
+            // Segmentar grupos en "unidades de render":
+            // grupos consecutivos con el mismo superset_group (no null) → cluster
+            // los demás → standalone
+            type RenderUnit =
+              | { type: "standalone"; group: ExerciseGroup; gIdx: number }
+              | {
+                  type: "cluster";
+                  supersetGroupId: string;
+                  items: Array<{ group: ExerciseGroup; gIdx: number }>;
+                };
+
+            const units: RenderUnit[] = [];
+
+            for (let i = 0; i < groups.length; i++) {
+              const group = groups[i];
+              const sg = group.variants[0]?.superset_group ?? null;
+
+              if (sg) {
+                // Es parte de un superset: si la última unidad ya es un cluster
+                // con el mismo UUID, agregar; si no, crear uno nuevo.
+                const last = units[units.length - 1];
+                if (last?.type === "cluster" && last.supersetGroupId === sg) {
+                  last.items.push({ group, gIdx: i });
+                } else {
+                  units.push({
+                    type: "cluster",
+                    supersetGroupId: sg,
+                    items: [{ group, gIdx: i }],
+                  });
+                }
+              } else {
+                units.push({ type: "standalone", group, gIdx: i });
+              }
+            }
+
+            return units.map((unit) => {
+              if (unit.type === "standalone") {
+                const { group, gIdx } = unit;
+                return (
+                  <ExerciseBlock
+                    key={group.groupKey}
+                    variants={group.variants}
+                    groupIndex={gIdx}
+                    totalGroups={groups.length}
+                    readOnly={isReadOnly}
+                    onUpdate={handleUpdateBlock}
+                    onRemove={handleRemoveBlock}
+                    onReorderGroup={handleReorderGroup}
+                    onAddVariant={handleAddVariant}
+                    onStartCombine={
+                      !isReadOnly
+                        ? () => handleStartCombine(group.variants[0]!.order_index)
+                        : undefined
+                    }
+                    combineMode={combineMode.active}
+                    combineSelected={combineMode.selected.includes(
+                      group.variants[0]?.order_index ?? -1
+                    )}
+                    onToggleCombineSelect={() =>
+                      handleToggleCombineSelect(
+                        group.variants[0]?.order_index ?? -1
+                      )
+                    }
+                  />
+                );
+              }
+
+              // Cluster de superset — key estable basada en su primer miembro
+              // (evita colisión si el mismo UUID quedara no-consecutivo tras un reorder).
+              return (
+                <SupersetGroupBorder
+                  key={unit.items[0]?.group.groupKey ?? unit.supersetGroupId}
+                  exerciseCount={unit.items.length}
+                  onDissolve={() => handleDissolveSuperset(unit.supersetGroupId)}
+                >
+                  {unit.items.map(({ group, gIdx }, itemIdx) => (
+                    <div
+                      key={group.groupKey}
+                      className="p-md"
+                      style={{
+                        borderBottom:
+                          itemIdx < unit.items.length - 1
+                            ? "1px solid var(--separator-subtle)"
+                            : undefined,
+                      }}
+                    >
+                      <ExerciseBlock
+                        variants={group.variants}
+                        groupIndex={gIdx}
+                        totalGroups={groups.length}
+                        readOnly={isReadOnly}
+                        onUpdate={handleUpdateBlock}
+                        onRemove={handleRemoveBlock}
+                        onReorderGroup={handleReorderGroup}
+                        onAddVariant={handleAddVariant}
+                        // No se pasa onStartCombine dentro del cluster — ya están combinados
+                      />
+                    </div>
+                  ))}
+                </SupersetGroupBorder>
+              );
+            });
+          })()}
+
+          {/* Card de "agregar ejercicio" — oculta en combine mode */}
+          {!isReadOnly && !combineMode.active && (
             <button
               type="button"
               onClick={handleAddExercise}

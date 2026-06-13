@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { getExerciseMedia, deleteExerciseMedia } from "@/lib/api/exercise-media";
 import { getErrorMessage } from "@/lib/utils";
 import { AddExerciseMediaPanel } from "./AddExerciseMediaPanel";
+import { CustomVideoPlayer } from "./CustomVideoPlayer";
 import type { ExerciseMedia } from "@/lib/api/types";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ export const ExerciseGalleryModal: React.FC<ExerciseGalleryModalProps> = ({
         ) : view === "viewer" && selected ? (
           /* ── Vista: visor in-app ── */
           <ViewerPanel
+            key={selected.id}
             item={selected}
             exerciseName={exerciseName}
             onBack={() => {
@@ -402,23 +404,28 @@ function extractTikTokId(url: string | null): string | null {
 }
 
 /**
- * Construye la URL de embed correcta según el provider externo.
- * Devuelve null si no es un provider embebible conocido.
+ * URL de embed del proveedor (YouTube / TikTok). Estos usan SIEMPRE el player
+ * del proveedor (igual que mobile — no se pueden poner controles propios encima).
+ * Drive NO va por acá: se intenta reproducir con player propio (ver ViewerPanel).
  */
-function buildVideoEmbedSrc(item: ExerciseMedia): string | null {
+function buildProviderEmbedSrc(item: ExerciseMedia): string | null {
   if (item.externalProvider === "youtube") {
     const id = item.externalVideoId ?? extractYouTubeId(item.externalUrl);
     if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1`;
-  }
-  if (item.externalProvider === "drive") {
-    const id = extractDriveId(item.externalUrl);
-    if (id) return `https://drive.google.com/file/d/${id}/preview`;
   }
   if (item.externalProvider === "tiktok") {
     const id = item.externalVideoId ?? extractTikTokId(item.externalUrl);
     if (id) return `https://www.tiktok.com/embed/v2/${id}`;
   }
   return null;
+}
+
+/** Candidatos de URL directa (MP4) de Drive para reproducir con <video> propio. */
+function buildDriveDirectUrlCandidates(id: string): string[] {
+  return [
+    `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`,
+    `https://drive.google.com/uc?export=download&id=${id}`,
+  ];
 }
 
 // ─── ViewerPanel ──────────────────────────────────────────────────────────────
@@ -437,17 +444,31 @@ const ViewerPanel: React.FC<ViewerPanelProps> = ({
   onDelete,
 }) => {
   const isVideo = item.mediaType === "video";
+  const [driveFailed, setDriveFailed] = useState(false);
 
-  // Determinar el embed a usar para videos
+  const driveId =
+    item.externalProvider === "drive"
+      ? (item.externalVideoId ?? extractDriveId(item.externalUrl))
+      : null;
+
+  // Determinar el contenido del visor para videos
   const videoContent = (() => {
     if (!isVideo) return null;
 
-    // 1) Embed correcto según provider (YouTube, Drive /preview, TikTok embed)
-    const embedSrc = buildVideoEmbedSrc(item);
-    if (embedSrc) {
+    // 1) Drive → intentar player PROPIO con la URL directa; si falla, embed /preview
+    if (item.externalProvider === "drive" && driveId) {
+      if (!driveFailed) {
+        return (
+          <CustomVideoPlayer
+            sources={buildDriveDirectUrlCandidates(driveId)}
+            poster={item.thumbnailUrl}
+            onAllFailed={() => setDriveFailed(true)}
+          />
+        );
+      }
       return (
         <iframe
-          src={embedSrc}
+          src={`https://drive.google.com/file/d/${driveId}/preview`}
           title={item.title ?? exerciseName}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           referrerPolicy="strict-origin-when-cross-origin"
@@ -457,20 +478,29 @@ const ViewerPanel: React.FC<ViewerPanelProps> = ({
       );
     }
 
-    // 2) Video subido (S3)
-    if (item.cdnUrl) {
+    // 2) YouTube / TikTok → player del proveedor (igual que mobile)
+    const providerSrc = buildProviderEmbedSrc(item);
+    if (providerSrc) {
       return (
-        // eslint-disable-next-line jsx-a11y/media-has-caption
-        <video
-          src={item.cdnUrl}
-          controls
-          autoPlay
-          className="w-full h-full object-contain"
+        <iframe
+          src={providerSrc}
+          title={item.title ?? exerciseName}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
+          className="w-full h-full border-0"
         />
       );
     }
 
-    // 3) Sin forma de embeber → mensaje (no redirigimos automáticamente)
+    // 3) Video subido (S3) → player con controles propios
+    if (item.cdnUrl) {
+      return (
+        <CustomVideoPlayer sources={[item.cdnUrl]} poster={item.thumbnailUrl} />
+      );
+    }
+
+    // 4) Sin forma de reproducir → mensaje (no redirigimos automáticamente)
     return (
       <div
         className="w-full h-full flex flex-col items-center justify-center gap-sm px-lg text-center"

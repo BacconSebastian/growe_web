@@ -8,6 +8,7 @@ import { getErrorMessage, getUserInitials, getDisplayName } from "@/lib/utils";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { StudentBadges } from "@/components/coaching/StudentBadges";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { GradientSurface } from "@/components/ui/GradientSurface";
@@ -16,50 +17,7 @@ import { SkeletonLine, SkeletonCircle } from "@/components/ui/Skeleton";
 import { InviteStudentModal } from "@/components/students/InviteStudentModal";
 import type { PaginationMeta } from "@/lib/api/types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Días enteros desde una fecha ISO. Devuelve null si la fecha es null. */
-function getDaysSince(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
-}
-
-function formatTimeAgo(dateStr: string | null): string {
-  const days = getDaysSince(dateStr);
-  if (days === null) return "Sin entrenos";
-  if (days <= 0) return "Hoy";
-  if (days === 1) return "Ayer";
-  if (days < 7) return `Hace ${days} días`;
-  if (days < 30) return `Hace ${Math.floor(days / 7)} sem.`;
-  return `Hace ${Math.floor(days / 30)} mes(es)`;
-}
-
-/**
- * Devuelve el label del badge de actividad con prefijo gramaticalmente
- * correcto. "Sin entrenos" se pasa tal cual; el resto lleva prefijo.
- */
-function formatActivityBadge(dateStr: string | null): string {
-  const raw = formatTimeAgo(dateStr);
-  if (raw === "Sin entrenos") return raw;
-  // "Hoy" / "Ayer" → minúscula directa
-  // "Hace …" → primera letra a minúscula
-  const lower = raw.charAt(0).toLowerCase() + raw.slice(1);
-  return `Última actividad ${lower}`;
-}
-
-/**
- * Color del badge de actividad según días transcurridos:
- * null → danger (rojo), 0-3 → success (verde), 4-7 → warning (naranja), >7 → danger (rojo).
- */
-function getActivityBadgeVariant(
-  dateStr: string | null
-): "success" | "warning" | "danger" {
-  const days = getDaysSince(dateStr);
-  if (days === null) return "danger";
-  if (days <= 3) return "success";
-  if (days <= 7) return "warning";
-  return "danger";
-}
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 /** Alto fijo de fila para filas uniformes. */
 const ROW_HEIGHT = 68;
@@ -149,18 +107,11 @@ function StudentRow({ student, isLast }: StudentRowProps) {
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-fg m-0 truncate">{displayName}</p>
-        <div className="flex items-center gap-xs mt-xxs flex-wrap">
-          <Badge variant={getActivityBadgeVariant(student.last_workout_at)} size="sm">
-            {formatActivityBadge(student.last_workout_at)}
-          </Badge>
-          <Badge
-            variant={student.active_planning_title ? "neutral" : "danger"}
-            size="sm"
-          >
-            {student.active_planning_title
-              ? `Planificación asignada: ${student.active_planning_title}`
-              : "Sin planificación"}
-          </Badge>
+        <div className="mt-xxs">
+          <StudentBadges
+            lastWorkoutAt={student.last_workout_at}
+            activePlanningTitle={student.active_planning_title ?? null}
+          />
         </div>
       </div>
 

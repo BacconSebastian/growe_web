@@ -67,6 +67,20 @@ export async function markExerciseCommentsRead(
   });
 }
 
+export async function updateExerciseComment(
+  commentId: number,
+  content: string
+): Promise<ExerciseComment> {
+  const raw = await httpFetch<RawExerciseComment>(
+    `/routines/exercises/comments/${commentId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }
+  );
+  return mapComment(raw);
+}
+
 export async function deleteExerciseComment(commentId: number): Promise<void> {
   await httpFetch<unknown>(`/routines/exercises/comments/${commentId}`, {
     method: "DELETE",

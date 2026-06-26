@@ -12,6 +12,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { removeGroupMember } from "@/lib/api/coaching";
 import type { TrainingGroupMember } from "@/lib/api/types";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { StudentBadges } from "@/components/coaching/StudentBadges";
 
 const SEARCH_THRESHOLD = 8;
 const PER_PAGE = 5;
@@ -150,17 +151,26 @@ export const GroupMembersPanel: React.FC<GroupMembersPanelProps> = ({
                     }}
                   >
                     <Avatar src={member.avatar_url} initials={initials} size="md" />
-                    <Link
-                      href={`/students/${member.id}`}
-                      className="flex flex-col flex-1 min-w-0 no-underline group"
-                    >
-                      <span className="text-sm font-medium text-fg group-hover:underline truncate">
-                        {displayName}
-                      </span>
-                      <span className="text-xs text-fg-tertiary">
-                        {formatJoinedAt(member.joined_at)}
-                      </span>
-                    </Link>
+
+                    {/* Columna principal: nombre + fecha + badges */}
+                    <div className="flex flex-col flex-1 min-w-0 gap-xxs">
+                      <Link
+                        href={`/students/${member.id}`}
+                        className="no-underline group"
+                      >
+                        <span className="text-sm font-medium text-fg group-hover:underline truncate block">
+                          {displayName}
+                        </span>
+                        <span className="text-xs text-fg-tertiary">
+                          {formatJoinedAt(member.joined_at)}
+                        </span>
+                      </Link>
+                      <StudentBadges
+                        lastWorkoutAt={member.last_workout_at}
+                        activePlanningTitle={member.active_planning_title ?? null}
+                      />
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => setRemoveTarget(member)}

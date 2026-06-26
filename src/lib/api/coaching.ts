@@ -37,6 +37,10 @@ import type {
   CoachNote,
   StudentLogListItem,
   WeekRoutineDetail,
+  CoachScheduleResponse,
+  CoachScheduleSlot,
+  CreateScheduleSlotPayload,
+  UpdateScheduleSlotPayload,
 } from "./types";
 import type {
   AddWeekPayload,
@@ -1031,6 +1035,39 @@ export async function getGroupLeaderboard(
 
 // Legacy week exercises eliminados — los componentes PlanningEditor.tsx / WeekExercisesEditor.tsx
 // que los usaban fueron eliminados en la Fase 1 del rework de plannings.
+
+// ─── Schedule ─────────────────────────────────────────────────────────────────
+
+/** Agenda semanal del coach: todos los slots. */
+export async function getCoachSchedule(): Promise<CoachScheduleResponse> {
+  return httpFetch<CoachScheduleResponse>("/coaching/schedule");
+}
+
+/** Crea un slot de horario para un alumno. */
+export async function createScheduleSlot(
+  payload: CreateScheduleSlotPayload
+): Promise<CoachScheduleSlot> {
+  return httpFetch<CoachScheduleSlot>("/coaching/schedule", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Actualiza día u horarios de un slot existente. */
+export async function updateScheduleSlot(
+  slotId: number,
+  data: UpdateScheduleSlotPayload
+): Promise<CoachScheduleSlot> {
+  return httpFetch<CoachScheduleSlot>(`/coaching/schedule/${slotId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/** Elimina un slot de horario. */
+export async function deleteScheduleSlot(slotId: number): Promise<void> {
+  await httpFetch<null>(`/coaching/schedule/${slotId}`, { method: "DELETE" });
+}
 
 // ─── Attention Dashboard ──────────────────────────────────────────────────────
 

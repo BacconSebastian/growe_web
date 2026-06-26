@@ -107,6 +107,11 @@ interface ExerciseBlockProps {
   onReorderGroup: (orderIndex: number, newGroupPosition: number) => void;
   /** Callback para agregar suplente — crea una variante sin nombre en el grupo */
   onAddVariant: (orderIndex: number) => void;
+  /**
+   * Estado inicial de expansión. Si se omite, se auto-expande solo el primer
+   * grupo con nombre (comportamiento del editor de rutinas).
+   */
+  defaultExpanded?: boolean;
   // ── Combine mode (opcionales — no pasan desde WeekRoutineExercisesEditor) ──
   /** Arranca el modo combinar con este grupo como primer seleccionado. */
   onStartCombine?: () => void;
@@ -207,11 +212,12 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   combineMode = false,
   combineSelected = false,
   onToggleCombineSelect,
+  defaultExpanded,
 }) => {
-  // Auto-expandir solo el primer ejercicio de una rutina ya cargada (con nombre).
-  // Los bloques nuevos (sin nombre) arrancan contraídos — con el buscador inline.
+  // Auto-expandir solo el primer ejercicio de una rutina ya cargada (con nombre),
+  // salvo que el contenedor fuerce un estado inicial con `defaultExpanded`.
   const [expanded, setExpanded] = useState(
-    groupIndex === 0 && !!variants[0]?.name
+    defaultExpanded ?? (groupIndex === 0 && !!variants[0]?.name)
   );
   const [activeVariantIdx, setActiveVariantIdx] = useState(0);
   const [showVarsModal, setShowVarsModal] = useState(false);

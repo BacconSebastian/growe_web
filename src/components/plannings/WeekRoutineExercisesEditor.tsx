@@ -11,12 +11,13 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { Save, Trash2, History, CalendarClock } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SkeletonLine } from "@/components/ui/Skeleton";
 import { Badge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   ExerciseBlock,
   ExerciseBlockData,
@@ -26,6 +27,13 @@ import { editableToRoutineSet } from "@/components/routines/SetsTable";
 import { resolveVariablesConfig } from "@/lib/exercise-presets";
 import { groupBySupersetGroup } from "@/lib/superset-grouping";
 import { getErrorMessage } from "@/lib/utils";
+import {
+  fillFromLastLog,
+  fillFromPreviousWeek,
+  type RoutineSnapshotForFill,
+} from "@/lib/exercise-value-fill";
+import { combineIntoGroup, ungroupSuperset } from "@/lib/superset-edit";
+import { getLastStudentRoutineLog } from "@/lib/api/coaching";
 
 import type {
   PlanningWeekRoutineExercise,
@@ -39,13 +47,31 @@ interface WeekRoutineExercisesEditorProps {
   weekRoutine: PlanningWeekRoutine;
   /** Si true, los controles de edición quedan deshabilitados (authorship constraint) */
   readOnly?: boolean;
-  /** Callback al guardar el snapshot */
+  /** Callback al guardar el snapshot (nombre + ejercicios) */
   onSave: (
     wkRtId: number,
+    title: string,
     exercises: Array<Record<string, unknown>>
   ) => Promise<void>;
+  /** Callback al eliminar la rutina de la semana */
+  onDelete: (wkRtId: number) => Promise<void>;
   /** Para mostrar estado de carga inicial si los ejercicios no están cargados aún */
   loading?: boolean;
+  /**
+   * Modo de la vista: "own" (alumno viendo su planning) o "coach" (coach editando).
+   * Necesario para habilitar/deshabilitar el botón "Últimos valores".
+   */
+  mode?: "own" | "coach";
+  /**
+   * ID del alumno. Requerido en modo coach para llamar a getLastStudentRoutineLog.
+   */
+  studentId?: number;
+  /**
+   * Ejercicios del snapshot equivalente de la semana anterior (N-1).
+   * Cuando está presente, habilita el botón "Semana pasada".
+   * Derivado por PlanningWeekDetail a partir del prop previousWeek.
+   */
+  prevExercises?: PlanningWeekRoutineExercise[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -76,30 +102,38 @@ function weekRoutineExToRoutineExercise(
 
 /**
  * Construye el payload de ejercicios que espera el backend al guardar el snapshot.
- * Incluye superset_group si el ejercicio lo tiene.
+ *
+ * Lee `superset_group` directamente del bloque (no de originalExercises) para que
+ * los cambios de agrupamiento hechos en memoria (combineIntoGroup/ungroupSuperset)
+ * se persistan correctamente.
+ *
+ * Normaliza contigüidad antes de mapear: los miembros de un grupo se agrupan juntos
+ * en el payload, lo que garantiza que el backend reciba grupos contiguos incluso si
+ * el usuario reordenó un bloque individual sin mover el grupo completo.
+ *
+ * El parámetro `originalExercises` ya no se utiliza para superset_group pero se
+ * mantiene en la firma para compatibilidad con los call-sites existentes.
  */
 function buildExercisesPayload(
   blocks: ExerciseBlockData[],
-  originalExercises: PlanningWeekRoutineExercise[]
+  _originalExercises: PlanningWeekRoutineExercise[]
 ): Array<Record<string, unknown>> {
-  const supersetGroupMap = new Map<string, string | null>();
-  for (const ex of originalExercises) {
-    supersetGroupMap.set(String(ex.id), ex.superset_group ?? null);
-  }
+  // Normalizar contigüidad: reordenar bloques para que los miembros de cada grupo
+  // queden contiguos (misma posición relativa entre sí, insertados en la posición
+  // del primer miembro del grupo).
+  const orderedBlocks = normalizeGroupContiguity(blocks);
 
-  return blocks.map((block, idx) => {
+  return orderedBlocks.map((block, idx) => {
     const config = resolveVariablesConfig(
       block.variables_config,
       block.exercise_type
     );
     const sets = block.sets.map((s) => editableToRoutineSet(s, config));
 
-    const supersetGroup = supersetGroupMap.get(block._key) ?? null;
-
     return {
       exercise_id: block.exercise_id,
       name: block.name,
-      order_index: idx,
+      order_index: idx + 1,
       series: block.sets.length,
       repetitions:
         (block.sets[0] as Record<string, unknown>)?.reps != null
@@ -109,20 +143,76 @@ function buildExercisesPayload(
       is_warmup: block.is_warmup,
       sets_data: sets,
       variables_config: block.variables_config,
-      superset_group: supersetGroup,
+      superset_group: block.superset_group ?? null,
     } as Record<string, unknown>;
   });
+}
+
+/**
+ * Garantiza que los bloques de un mismo superset_group queden contiguos en el array.
+ * Algoritmo: primera pasada lineal; cuando se encuentra el primer miembro de un grupo
+ * no procesado, se insertan todos los miembros de ese grupo en ese punto.
+ * Los bloques sin grupo y los grupos ya contiguos no se mueven.
+ */
+function normalizeGroupContiguity(blocks: ExerciseBlockData[]): ExerciseBlockData[] {
+  const emitted = new Set<string>(); // _keys ya emitidos
+  const groupEmitted = new Set<string>(); // groupIds ya emitidos
+  const result: ExerciseBlockData[] = [];
+
+  for (const block of blocks) {
+    if (emitted.has(block._key)) continue;
+
+    if (block.superset_group && !groupEmitted.has(block.superset_group)) {
+      // Emitir todos los miembros de este grupo en orden de aparición original
+      groupEmitted.add(block.superset_group);
+      const members = blocks.filter((b) => b.superset_group === block.superset_group);
+      for (const m of members) {
+        result.push(m);
+        emitted.add(m._key);
+      }
+    } else if (!block.superset_group) {
+      result.push(block);
+      emitted.add(block._key);
+    }
+    // Si block.superset_group está seteado pero groupEmitted ya lo tiene → ya fue incluido
+  }
+
+  return result;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const WeekRoutineExercisesEditor: React.FC<
   WeekRoutineExercisesEditorProps
-> = ({ weekRoutine, readOnly = false, onSave, loading = false }) => {
+> = ({
+  weekRoutine,
+  readOnly = false,
+  onSave,
+  onDelete,
+  loading = false,
+  mode = "own",
+  studentId,
+  prevExercises,
+}) => {
   const [blocks, setBlocks] = useState<ExerciseBlockData[]>([]);
+  const [title, setTitle] = useState(weekRoutine.routine_title);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  /** Estado de carga del fill (ambos botones comparten) */
+  const [fillLoading, setFillLoading] = useState(false);
+  const [fillError, setFillError] = useState<string | null>(null);
+  /** Modo "seleccionar para combinar" — bloquea el resto del editor */
+  const [combineMode, setCombineMode] = useState(false);
+  /** _keys de los bloques seleccionados para combinar */
+  const [combineSelectedKeys, setCombineSelectedKeys] = useState<Set<string>>(new Set());
+
+  // Sincronizar el nombre cuando cambia la rutina
+  useEffect(() => {
+    setTitle(weekRoutine.routine_title);
+  }, [weekRoutine.id, weekRoutine.routine_title]);
 
   // Inicializar bloques cuando cambian los ejercicios
   useEffect(() => {
@@ -183,6 +273,100 @@ export const WeekRoutineExercisesEditor: React.FC<
     // no-op en el editor de snapshots de planning
   }, []);
 
+  // ─── Combine handlers ────────────────────────────────────────────────────────
+
+  /**
+   * Entra al modo combinar con el bloque del `_key` dado preseleccionado.
+   * Disparado por el botón Link2 de un ExerciseBlock expandido.
+   */
+  const handleStartCombine = useCallback((key: string) => {
+    if (readOnly) return;
+    setCombineMode(true);
+    setCombineSelectedKeys(new Set([key]));
+  }, [readOnly]);
+
+  /**
+   * Toggle de selección de un bloque en el modo combinar.
+   */
+  const handleToggleCombineSelect = useCallback((key: string) => {
+    setCombineSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * Confirma el combine: aplica combineIntoGroup y sale del modo combinar.
+   * Requiere ≥2 seleccionados (validación en el botón y aquí como guard).
+   */
+  const handleConfirmCombine = useCallback(() => {
+    if (combineSelectedKeys.size < 2) return;
+    setBlocks((prev) => combineIntoGroup(prev, combineSelectedKeys));
+    setCombineMode(false);
+    setCombineSelectedKeys(new Set());
+  }, [combineSelectedKeys]);
+
+  /**
+   * Cancela el modo combinar sin aplicar cambios.
+   */
+  const handleCancelCombine = useCallback(() => {
+    setCombineMode(false);
+    setCombineSelectedKeys(new Set());
+  }, []);
+
+  /**
+   * Deshace un grupo superset: aplica ungroupSuperset y actualiza los bloques.
+   */
+  const handleUngroupSuperset = useCallback((groupId: string) => {
+    setBlocks((prev) => ungroupSuperset(prev, groupId));
+  }, []);
+
+  /**
+   * Botón "Últimos valores" — coach only.
+   * Llama a getLastStudentRoutineLog y aplica fillFromLastLog sobre los bloques.
+   * No auto-guarda: el usuario debe presionar "Guardar" manualmente.
+   */
+  const handleFillFromLastLog = async () => {
+    if (mode !== "coach" || studentId == null || !weekRoutine.routine_id) return;
+    setFillLoading(true);
+    setFillError(null);
+    try {
+      const result = await getLastStudentRoutineLog(studentId, weekRoutine.routine_id);
+      const lastLog = result?.items?.[0];
+      if (!lastLog) {
+        setFillError("No hay entrenamientos anteriores para esta rutina.");
+        return;
+      }
+      const snapshot = lastLog.routine_snapshot as RoutineSnapshotForFill | null | undefined;
+      if (!snapshot) {
+        setFillError("El último entrenamiento no tiene datos de ejercicios.");
+        return;
+      }
+      setBlocks((prev) => fillFromLastLog(prev, snapshot));
+    } catch (err) {
+      setFillError(getErrorMessage(err, "No se pudieron cargar los últimos valores."));
+    } finally {
+      setFillLoading(false);
+    }
+  };
+
+  /**
+   * Botón "Semana pasada" — ambos modos.
+   * Aplica fillFromPreviousWeek en memoria usando los ejercicios de la semana N-1.
+   * No requiere API — los datos vienen del prop prevExercises.
+   * No auto-guarda: el usuario debe presionar "Guardar" manualmente.
+   */
+  const handleFillFromPreviousWeek = () => {
+    if (!prevExercises || prevExercises.length === 0) return;
+    setFillError(null);
+    setBlocks((prev) => fillFromPreviousWeek(prev, prevExercises));
+  };
+
   const handleSave = async () => {
     if (readOnly) return;
     setSaving(true);
@@ -190,28 +374,41 @@ export const WeekRoutineExercisesEditor: React.FC<
     setSavedSuccess(false);
     try {
       const payload = buildExercisesPayload(blocks, weekRoutine.exercises);
-      await onSave(weekRoutine.id, payload);
+      await onSave(weekRoutine.id, title.trim() || weekRoutine.routine_title, payload);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err) {
-      setSaveError(getErrorMessage(err, "No se pudo guardar el snapshot."));
+      setSaveError(getErrorMessage(err, "No se pudo guardar."));
     } finally {
       setSaving(false);
     }
   };
 
-  // ─── Agrupamiento de supersets ────────────────────────────────────────────
+  const handleDelete = async () => {
+    setDeleting(true);
+    setSaveError(null);
+    try {
+      await onDelete(weekRoutine.id);
+    } catch (err) {
+      setSaveError(getErrorMessage(err, "No se pudo eliminar la rutina."));
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
-  const { groups } = groupBySupersetGroup(
-    weekRoutine.exercises.map((ex) => ({ ...ex, _key: String(ex.id) }))
-  );
+  // ─── Agrupamiento de supersets (desde blocks en estado, no weekRoutine.exercises) ─
 
+  // Derivar el mapa de superset_group directamente desde el estado `blocks`
+  // para que refleje los cambios de combineIntoGroup/ungroupSuperset en memoria.
   const blocksSupersetGroup = new Map<string, string>();
-  for (const ex of weekRoutine.exercises) {
-    if (ex.superset_group) {
-      blocksSupersetGroup.set(String(ex.id), ex.superset_group);
+  for (const block of blocks) {
+    if (block.superset_group) {
+      blocksSupersetGroup.set(block._key, block.superset_group);
     }
   }
+
+  // Suprimir warnings de groupBySupersetGroup (ya no se usa; se reemplazó por el mapa directo)
+  void groupBySupersetGroup;
 
   const renderedGroupIds = new Set<string>();
   const renderOrder: Array<
@@ -248,24 +445,121 @@ export const WeekRoutineExercisesEditor: React.FC<
     );
   }
 
-  if (blocks.length === 0) {
-    return (
-      <p className="text-sm text-fg-tertiary py-md text-center">
-        Esta rutina no tiene ejercicios en el snapshot.
-      </p>
-    );
-  }
-
   let displayIndex = 0;
   // Total de grupos visuales (para el OrderBadge)
   const totalVisualGroups = renderOrder.length;
 
-  // Suprimir warning de groups no usado (se usa en agrupamiento superset más arriba)
-  void groups;
-
   return (
     <div className="flex flex-col gap-md">
-      {saveError && <ErrorBanner message={saveError} dismissible />}
+      {/* ── Barra superior: nombre + fill buttons + Eliminar + Guardar ── */}
+      {!combineMode && (
+        <div className="flex items-center gap-md flex-wrap">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={readOnly}
+            placeholder="Nombre de la rutina..."
+            className="flex-1 min-w-[200px] h-11 rounded-pill px-lg bg-fill-tertiary text-fg placeholder-fg-tertiary text-base font-semibold border border-transparent outline-none transition-colors focus:border-primary disabled:cursor-default"
+          />
+
+          {/* Botón "Últimos valores" — solo coach con routine_id */}
+          {mode === "coach" && studentId != null && weekRoutine.routine_id && !readOnly && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="md"
+              loading={fillLoading}
+              disabled={fillLoading || saving}
+              onClick={handleFillFromLastLog}
+              iconLeft={<History size={16} />}
+              title="Pegar los valores del último entrenamiento del alumno"
+            >
+              Últimos valores
+            </Button>
+          )}
+
+          {/* Botón "Semana pasada" — ambos modos, requiere prevExercises */}
+          {prevExercises && prevExercises.length > 0 && !readOnly && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="md"
+              disabled={fillLoading || saving}
+              onClick={handleFillFromPreviousWeek}
+              iconLeft={<CalendarClock size={16} />}
+              title="Pegar los valores planificados en la semana anterior"
+            >
+              Semana pasada
+            </Button>
+          )}
+
+          {!readOnly && (
+            <>
+              <Button
+                type="button"
+                variant="danger"
+                size="md"
+                loading={deleting}
+                onClick={() => setShowDeleteConfirm(true)}
+                iconLeft={<Trash2 size={16} />}
+              >
+                Eliminar
+              </Button>
+              <Button
+                type="button"
+                variant={savedSuccess ? "success" : "primary"}
+                size="md"
+                loading={saving}
+                onClick={handleSave}
+                iconLeft={<Save size={16} />}
+              >
+                {savedSuccess ? "Guardado" : "Guardar"}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Barra de acción del modo combinar ── */}
+      {combineMode && (
+        <div
+          className="flex items-center gap-md flex-wrap rounded-lg px-lg py-md"
+          style={{
+            background: "var(--warning-alpha-08)",
+            border: "2px solid var(--warning)",
+          }}
+        >
+          <span className="text-sm font-semibold flex-1" style={{ color: "var(--warning)" }}>
+            Seleccioná los ejercicios a combinar en superset
+          </span>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            disabled={combineSelectedKeys.size < 2}
+            onClick={handleConfirmCombine}
+          >
+            Combinar ({combineSelectedKeys.size})
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="md"
+            onClick={handleCancelCombine}
+          >
+            Cancelar
+          </Button>
+        </div>
+      )}
+
+      {!combineMode && saveError && <ErrorBanner message={saveError} dismissible />}
+      {!combineMode && fillError && <ErrorBanner message={fillError} dismissible />}
+
+      {blocks.length === 0 && !combineMode && (
+        <p className="text-sm text-fg-tertiary py-md text-center">
+          Esta rutina no tiene ejercicios en el snapshot.
+        </p>
+      )}
 
       {/* Lista de ejercicios */}
       <div className="flex flex-col gap-sm">
@@ -278,17 +572,39 @@ export const WeekRoutineExercisesEditor: React.FC<
                 key={`sg-${item.groupId}`}
                 className="rounded-lg overflow-hidden"
                 style={{
-                  border: "2px solid var(--primary-alpha-20)",
+                  border: combineMode
+                    ? "2px solid var(--separator-subtle)"
+                    : "2px solid var(--primary-alpha-20)",
                   background: "var(--card)",
                 }}
               >
                 <div
-                  className="px-xl py-xs"
+                  className="px-xl py-xs flex items-center gap-md"
                   style={{ borderBottom: "1px solid var(--separator-subtle)" }}
                 >
                   <Badge variant="purple" size="sm">
                     Superset
                   </Badge>
+                  {/* Botón "Separar" — solo fuera del modo combinar y si no readOnly */}
+                  {!combineMode && !readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleUngroupSuperset(item.groupId)}
+                      className="ml-auto text-xs font-medium px-sm py-xxs rounded-pill transition-colors"
+                      style={{
+                        color: "var(--fg-tertiary)",
+                        background: "var(--fill-secondary)",
+                      }}
+                      onMouseEnter={(e) =>
+                        ((e.currentTarget as HTMLButtonElement).style.color = "var(--fg)")
+                      }
+                      onMouseLeave={(e) =>
+                        ((e.currentTarget as HTMLButtonElement).style.color = "var(--fg-tertiary)")
+                      }
+                    >
+                      Separar
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-col gap-0">
                   {item.memberBlocks.map((block, memberIdx) => {
@@ -299,11 +615,15 @@ export const WeekRoutineExercisesEditor: React.FC<
                         variants={[block]}
                         groupIndex={gIdx}
                         totalGroups={totalVisualGroups}
-                        readOnly={readOnly}
+                        readOnly={readOnly || combineMode}
+                        defaultExpanded={false}
                         onUpdate={handleUpdate}
                         onRemove={handleRemove}
                         onReorderGroup={handleReorderGroup}
                         onAddVariant={handleAddVariant}
+                        combineMode={combineMode}
+                        combineSelected={combineSelectedKeys.has(block._key)}
+                        onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
                       />
                     );
                   })}
@@ -318,39 +638,32 @@ export const WeekRoutineExercisesEditor: React.FC<
                 variants={[item.block]}
                 groupIndex={idx}
                 totalGroups={totalVisualGroups}
-                readOnly={readOnly}
+                readOnly={readOnly || combineMode}
+                defaultExpanded={false}
                 onUpdate={handleUpdate}
                 onRemove={handleRemove}
                 onReorderGroup={handleReorderGroup}
                 onAddVariant={handleAddVariant}
+                onStartCombine={!readOnly ? () => handleStartCombine(item.block._key) : undefined}
+                combineMode={combineMode}
+                combineSelected={combineSelectedKeys.has(item.block._key)}
+                onToggleCombineSelect={() => handleToggleCombineSelect(item.block._key)}
               />
             );
           }
         })}
       </div>
 
-      {/* Barra de guardado */}
-      {!readOnly && (
-        <div
-          className="flex items-center justify-between gap-md px-xl py-md rounded-lg"
-          style={{ background: "var(--fill-tertiary)" }}
-        >
-          <span className="text-xs text-fg-secondary">
-            {savedSuccess
-              ? "Snapshot guardado."
-              : "Editá los ejercicios del snapshot de esta semana."}
-          </span>
-          <Button
-            variant={savedSuccess ? "success" : "primary"}
-            size="sm"
-            loading={saving}
-            onClick={handleSave}
-            iconLeft={saving ? undefined : <Save size={14} />}
-          >
-            {savedSuccess ? "Guardado" : "Guardar snapshot"}
-          </Button>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Eliminar rutina"
+        description={`¿Quitar "${weekRoutine.routine_title}" de esta semana? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        confirmVariant="danger"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 };

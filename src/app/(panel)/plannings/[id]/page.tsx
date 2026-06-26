@@ -21,7 +21,11 @@ export default function PlanningDetailPage() {
 
   return (
     <div className="flex flex-col gap-xxl">
-      <PlanningOverview mode="own" planningId={id} />
+      <PlanningOverview
+        mode="own"
+        planningId={id}
+        trail={[{ label: "Planificaciones", href: "/plannings" }]}
+      />
     </div>
   );
 }

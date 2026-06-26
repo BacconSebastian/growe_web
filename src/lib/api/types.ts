@@ -1126,6 +1126,8 @@ export interface TrainingGroupMember {
   last_name?: string | null;
   avatar_url?: string | null;
   joined_at: string;
+  last_workout_at: string | null;
+  active_planning_title?: string | null;
 }
 
 export interface TrainingGroupDetail extends TrainingGroup {
@@ -1497,6 +1499,40 @@ export interface MonthlyReport {
     volume_sets_delta: number;
     duration_delta: number;
   } | null;
+}
+
+// ─── Coach Schedule ───────────────────────────────────────────────────────────
+
+export interface CoachScheduleSlot {
+  id: number;
+  student_id: number;
+  day_of_week: string;     // 'monday'..'sunday'
+  start_time: string;      // "HH:MM"
+  end_time?: string | null; // "HH:MM", obligatorio al crear/editar
+  student: {
+    id: number;
+    username: string;
+    avatar_url: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+}
+
+export interface CoachScheduleResponse {
+  slots: CoachScheduleSlot[];
+}
+
+export interface CreateScheduleSlotPayload {
+  student_id: number;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface UpdateScheduleSlotPayload {
+  day_of_week?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 // ─── App Version Gate ─────────────────────────────────────────────────────────

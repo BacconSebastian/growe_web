@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { MessageCircle, Trash2, Send } from "lucide-react";
+import { MessageCircle, Trash2, Send, Pencil, Check, X } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   getExerciseComments,
   createExerciseComment,
+  updateExerciseComment,
   markExerciseCommentsRead,
   deleteExerciseComment,
 } from "@/lib/api/comments";
@@ -53,6 +54,15 @@ function formatRelativeTime(dateStr: string): string {
   }
 }
 
+/** Un comentario se considera editado si updatedAt supera createdAt por >1s. */
+function isCommentEdited(comment: ExerciseComment): boolean {
+  if (!comment.updatedAt || !comment.createdAt) return false;
+  const updated = new Date(comment.updatedAt).getTime();
+  const created = new Date(comment.createdAt).getTime();
+  if (isNaN(updated) || isNaN(created)) return false;
+  return updated - created > 1000;
+}
+
 /**
  * ExerciseCommentsModal — lista y crea comentarios de un RoutineExercise.
  * Carga al abrir, marca como leídos (fire-and-forget), permite crear y eliminar
@@ -71,12 +81,16 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const listEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const autoGrow = (el: HTMLTextAreaElement) => {
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    // Piso 32px (= alto del botón "Enviar", size sm → h-8); techo 140px.
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 32), 140)}px`;
   };
 
   const { register, handleSubmit, reset, watch } = useForm<CommentFormValues>({
@@ -91,6 +105,8 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
     if (!open) return;
     setLoadError(null);
     setLoading(true);
+    setEditingId(null);
+    setEditText("");
 
     getExerciseComments(routineExerciseId)
       .then((data) => {
@@ -118,7 +134,7 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
       const newComment = await createExerciseComment(routineExerciseId, values.content.trim());
       setComments((prev) => [...prev, newComment]);
       reset();
-      if (textareaRef.current) textareaRef.current.style.height = "";
+      if (textareaRef.current) textareaRef.current.style.height = "32px";
     } catch (err) {
       setLoadError(getErrorMessage(err, "No se pudo enviar el comentario."));
     } finally {
@@ -137,6 +153,31 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
       setLoadError(getErrorMessage(err, "No se pudo eliminar el comentario."));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const startEdit = (comment: ExerciseComment) => {
+    setEditingId(comment.id);
+    setEditText(comment.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
+  const handleSaveEdit = async (commentId: number) => {
+    const trimmed = editText.trim();
+    if (!trimmed) return;
+    setSavingEdit(true);
+    try {
+      const updated = await updateExerciseComment(commentId, trimmed);
+      setComments((prev) => prev.map((c) => (c.id === commentId ? updated : c)));
+      cancelEdit();
+    } catch (err) {
+      setLoadError(getErrorMessage(err, "No se pudo editar el comentario."));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -161,6 +202,8 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
               <div className="flex flex-col gap-md">
                 {comments.map((comment) => {
                   const isOwn = user?.id === comment.user_id;
+                  const isEditing = editingId === comment.id;
+                  const edited = isCommentEdited(comment);
                   return (
                     <div
                       key={comment.id}
@@ -184,30 +227,104 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
                             {formatRelativeTime(comment.createdAt) && (
                               <span className="text-xs text-fg-tertiary">
                                 {formatRelativeTime(comment.createdAt)}
+                                {edited ? " · editado" : ""}
                               </span>
                             )}
                           </div>
                           {isOwn && (
-                            <button
-                              type="button"
-                              onClick={() => setDeleteId(comment.id)}
-                              className="w-7 h-7 flex items-center justify-center rounded-pill flex-shrink-0 transition-colors hover:opacity-80"
-                              style={{
-                                background: "var(--destructive-alpha-12)",
-                                color: "var(--destructive)",
-                              }}
-                              aria-label="Eliminar comentario"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            <div className="flex items-center gap-xs flex-shrink-0">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSaveEdit(comment.id)}
+                                    disabled={!editText.trim() || savingEdit}
+                                    className="w-7 h-7 flex items-center justify-center rounded-pill transition-colors hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    style={{
+                                      background: "var(--success-alpha-12)",
+                                      color: "var(--success)",
+                                    }}
+                                    aria-label="Guardar edición"
+                                  >
+                                    <Check size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelEdit}
+                                    disabled={savingEdit}
+                                    className="w-7 h-7 flex items-center justify-center rounded-pill transition-colors hover:opacity-80 disabled:opacity-40"
+                                    style={{
+                                      background: "var(--fill-secondary)",
+                                      color: "var(--fg-secondary)",
+                                    }}
+                                    aria-label="Cancelar edición"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => startEdit(comment)}
+                                    className="w-7 h-7 flex items-center justify-center rounded-pill transition-colors hover:opacity-80"
+                                    style={{
+                                      background: "var(--fill-secondary)",
+                                      color: "var(--fg-secondary)",
+                                    }}
+                                    aria-label="Editar comentario"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteId(comment.id)}
+                                    className="w-7 h-7 flex items-center justify-center rounded-pill transition-colors hover:opacity-80"
+                                    style={{
+                                      background: "var(--destructive-alpha-12)",
+                                      color: "var(--destructive)",
+                                    }}
+                                    aria-label="Eliminar comentario"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           )}
                         </div>
-                        <p
-                          className="text-sm text-fg-secondary m-0"
-                          style={{ whiteSpace: "pre-wrap" }}
-                        >
-                          {comment.content}
-                        </p>
+                        {isEditing ? (
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            maxLength={500}
+                            autoFocus
+                            rows={2}
+                            className="w-full resize-none text-sm text-fg outline-none rounded-md px-sm py-xs border leading-snug"
+                            style={{
+                              background: "var(--fill-quaternary)",
+                              borderColor: "var(--separator-subtle)",
+                              minHeight: "56px",
+                              maxHeight: "140px",
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                if (editText.trim() && !savingEdit) void handleSaveEdit(comment.id);
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEdit();
+                              }
+                            }}
+                          />
+                        ) : (
+                          <p
+                            className="text-sm text-fg-secondary m-0"
+                            style={{ whiteSpace: "pre-wrap" }}
+                          >
+                            {comment.content}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -238,9 +355,10 @@ export const ExerciseCommentsModal: React.FC<ExerciseCommentsModalProps> = ({
                   }}
                   placeholder="Escribí un comentario..."
                   rows={1}
-                  className="flex-1 resize-none text-fg placeholder-fg-tertiary outline-none transition-colors text-sm rounded-md px-sm py-xs border leading-tight"
+                  className="flex-1 resize-none text-fg placeholder-fg-tertiary outline-none transition-colors text-sm rounded-md px-sm py-[7px] border leading-tight"
                   style={{
                     background: "var(--fill-tertiary)",
+                    height: "32px",
                     maxHeight: "140px",
                     borderColor: "transparent",
                   }}

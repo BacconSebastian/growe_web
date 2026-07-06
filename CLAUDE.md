@@ -2,6 +2,26 @@
 
 Guía para Claude Code trabajando en el **panel web del coach** (`web/`).
 
+## ⚠️ Principio rector (OBLIGATORIO)
+
+El panel web **SIEMPRE replica el funcionamiento de la app mobile**. Es la misma
+app que `mobile/`, pero en formato web y **exclusivamente para coachs** (Profesor,
+role_id 2). No se inventan features ni flujos nuevos: cada vista, flujo y regla de
+negocio del web debe corresponder 1:1 con su equivalente en mobile.
+
+**Lo único que puede cambiar** entre mobile y web:
+
+1. **La forma de mostrar la información** (layout, densidad, navegación adaptada a
+   pantalla grande / desktop).
+2. **Las herramientas/affordances de interacción** (tablas, multi-select, paginación,
+   atajos de teclado, etc. propios de web).
+
+Todo lo demás — lógica, contratos de API, semántica, reglas de permisos — se copia
+de mobile. Antes de implementar cualquier vista del web, **buscar primero cómo lo
+hace mobile** (`mobile/app/`, `mobile/components/`, `mobile/lib/`) y reproducir ese
+comportamiento. Si mobile no tiene la feature, no va en el web (salvo pedido
+explícito del usuario).
+
 ## Stack
 
 - **Next.js (App Router) + TypeScript**, React client components (`"use client"`).
@@ -58,3 +78,53 @@ Referencia ya implementada: **Dashboard**, **Alumnos**, **Rutinas**.
 - Reutilizar componentes del design system antes de crear uno nuevo.
 - No ejecutar tests/builds destructivos sin pedido explícito (`tsc --noEmit` para verificar tipos es OK).
 - Errores user-facing: `getErrorMessage()` de `lib/utils`.
+- **Copy en español rioplatense (NO neutro):** todo texto visible al usuario
+  (labels, tooltips, mensajes, confirmaciones) usa el voseo/rioplatense. Nunca
+  español neutro. Ej: usar **"acá"** (no "aquí"), "agregá"/"poné" (no
+  "agrega"/"pon"), "tenés" (no "tienes").
+
+---
+
+## Paridad mobile ↔ web (MANDATORY)
+
+El panel web debe **replicar el lenguaje visual de mobile** para los componentes
+de entrenamiento, no inventar uno propio. Antes de diseñar/editar un componente
+que ya existe en mobile, **revisar su equivalente** en `mobile/components/` y
+mantener la misma semántica de color, estructura e íconos.
+
+### Convención de color (espejo de mobile)
+
+| Concepto | Color | Token web | Mobile ref |
+|---|---|---|---|
+| **Superset / ejercicios combinados** | ámbar | `--warning` (+ `--warning-alpha-12/20/30`) | `SupersetGroupBorder` variant `"superset"` |
+| **Variantes / suplentes** | azul | `--primary` (+ `--primary-alpha-12/20`) | `SupersetGroupBorder` variant `"variants"` / `VariantSelector` |
+| **Acción destructiva** (separar grupo, quitar) | rojo | `--destructive` (+ `--destructive-alpha-12`) | `Unlink2` rojo |
+
+### Superset (ejercicios combinados)
+
+Replica `mobile/components/workout/SupersetGroupBorder.tsx`. Implementado en
+`web/src/components/plannings/WeekRoutineExercisesEditor.tsx`:
+
+- **NO** envolver los miembros en una caja con borde (evitar "caja dentro de caja").
+- **Acento ámbar** vertical a la izquierda del grupo: barra de 3px `rounded-full`
+  `self-stretch` en `--warning`.
+- **Chip pill** (no texto plano): `rounded-pill`, fondo `--warning-alpha-12`,
+  borde `--warning-alpha-30`, con ícono `Link2` + texto **"Superset · N ejercicios"**
+  en `--warning`. El "Separar" va dentro del chip, separado por un divisor
+  (`--warning-alpha-30`), como icon-button `Unlink2` en `--destructive`.
+- Los ejercicios del grupo van como cards apiladas (`gap-sm`) debajo del chip.
+
+### Variantes (suplentes)
+
+Replica `mobile/components/workout/VariantSelector.tsx` (en
+`web/src/components/routines/ExerciseBlock.tsx`):
+
+- Selector segmentado con label **"VARIANTES"** en `--primary`.
+- Variante activa resaltada en azul (`--primary-alpha-12` / `--primary`), no en gris.
+- Badge "N variantes" (card colapsada) en `variant="primary"`.
+- Fallback de nombres: `"Principal"` / `"Suplente N"`.
+
+### Íconos (lucide, espejo de mobile)
+
+`Link2` (combinar/superset), `Unlink2` (separar grupo), `Settings2` (variables),
+`History` (últimos valores), `CalendarClock` (semana pasada).

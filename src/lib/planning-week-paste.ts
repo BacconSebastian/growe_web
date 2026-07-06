@@ -13,10 +13,15 @@
 
 import {
   saveWeekRoutines,
+  updateWeekRoutineExercises,
+  removeRoutineFromWeek,
   type SaveWeekRoutineInput,
+  type SaveWeekRoutineExercisesPayload,
 } from "@/lib/api/plannings";
 import {
   coachSaveWeekRoutines,
+  coachUpdateWeekRoutineExercises,
+  coachRemoveRoutineFromWeek,
   createAndAssignStudentRoutine,
 } from "@/lib/api/coaching";
 import type {
@@ -80,8 +85,8 @@ export async function pasteRoutineIntoWeek({
   targetWkRt,
   targetDay,
 }: PasteParams): Promise<PlanningWeek> {
-  const clipExercises: Array<Record<string, unknown>> = clipboardExercises.map(
-    (ex, idx) => ({
+  const clipExercises: SaveWeekRoutineExercisesPayload["exercises"] =
+    clipboardExercises.map((ex, idx) => ({
       exercise_id: ex.exercise_id ?? null,
       name: ex.name,
       order_index: idx + 1,
@@ -92,26 +97,26 @@ export async function pasteRoutineIntoWeek({
       sets_data: ex.sets_data ?? [],
       variables_config: ex.variables_config ?? null,
       superset_group: ex.superset_group ?? null,
-    })
-  );
-
-  // Caso A: reemplazar ejercicios de rutina existente (mantiene su título).
-  if (targetWkRt !== null) {
-    const payload: SaveWeekRoutineInput[] = week.routines.map((r) => ({
-      week_routine_id: r.id,
-      routine_id: r.routine_id,
-      title: r.routine_title,
-      day_of_week: effectiveDay(r),
-      order_index: r.order_index,
-      exercises:
-        r.id === targetWkRt.id
-          ? clipExercises
-          : mapRoutineExercisesToInput(r.exercises),
     }));
 
-    return mode === "coach" && studentId != null
-      ? coachSaveWeekRoutines(studentId, week.id, payload)
-      : saveWeekRoutines(week.id, payload);
+  // Caso A: reemplazar ejercicios de rutina existente (mantiene su título).
+  // Usa el endpoint de UN SOLO pivot (rápido) en vez de reescribir toda la semana.
+  if (targetWkRt !== null) {
+    const updatedExercises =
+      mode === "coach" && studentId != null
+        ? await coachUpdateWeekRoutineExercises(studentId, targetWkRt.id, {
+            exercises: clipExercises,
+          })
+        : await updateWeekRoutineExercises(targetWkRt.id, {
+            exercises: clipExercises,
+          });
+
+    return {
+      ...week,
+      routines: week.routines.map((r) =>
+        r.id === targetWkRt.id ? { ...r, exercises: updatedExercises } : r
+      ),
+    };
   }
 
   // Caso B: celda vacía → crear rutina nueva con el contenido del clipboard.
@@ -143,4 +148,24 @@ export async function pasteRoutineIntoWeek({
   };
 
   return saveWeekRoutines(week.id, [...existingInputs, newRoutineInput]);
+}
+
+/**
+ * Quita una PlanningWeekRoutine de la semana (le saca el día asignado).
+ * NO borra la rutina template del alumno — solo elimina el pivot de la semana.
+ * Endpoint targeted (DELETE), rápido. Devuelve la semana sin esa rutina.
+ */
+export async function removeRoutineFromWeekShared(params: {
+  week: PlanningWeek;
+  wkRtId: number;
+  mode: "own" | "coach";
+  studentId?: number;
+}): Promise<PlanningWeek> {
+  const { week, wkRtId, mode, studentId } = params;
+  if (mode === "coach" && studentId != null) {
+    await coachRemoveRoutineFromWeek(studentId, wkRtId);
+  } else {
+    await removeRoutineFromWeek(wkRtId);
+  }
+  return { ...week, routines: week.routines.filter((r) => r.id !== wkRtId) };
 }

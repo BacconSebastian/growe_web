@@ -11,12 +11,12 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Save, Trash2, History, CalendarClock } from "lucide-react";
+import { Save, Trash2, History, CalendarClock, Link2, Unlink2 } from "lucide-react";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SkeletonLine } from "@/components/ui/Skeleton";
-import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   ExerciseBlock,
@@ -32,7 +32,7 @@ import {
   fillFromPreviousWeek,
   type RoutineSnapshotForFill,
 } from "@/lib/exercise-value-fill";
-import { combineIntoGroup, ungroupSuperset } from "@/lib/superset-edit";
+import { combineIntoGroup, ungroupSuperset, removeFromSupersetGroup } from "@/lib/superset-edit";
 import { getLastStudentRoutineLog } from "@/lib/api/coaching";
 
 import type {
@@ -302,7 +302,7 @@ export const WeekRoutineExercisesEditor: React.FC<
 
   /**
    * Confirma el combine: aplica combineIntoGroup y sale del modo combinar.
-   * Requiere ≥2 seleccionados (validación en el botón y aquí como guard).
+   * Requiere ≥2 seleccionados (validación en el botón y acá como guard).
    */
   const handleConfirmCombine = useCallback(() => {
     if (combineSelectedKeys.size < 2) return;
@@ -324,6 +324,14 @@ export const WeekRoutineExercisesEditor: React.FC<
    */
   const handleUngroupSuperset = useCallback((groupId: string) => {
     setBlocks((prev) => ungroupSuperset(prev, groupId));
+  }, []);
+
+  /**
+   * Saca un ejercicio de su grupo de superset. Si el grupo queda con <2 miembros,
+   * la combinación se disuelve por completo.
+   */
+  const handleRemoveFromGroup = useCallback((key: string) => {
+    setBlocks((prev) => removeFromSupersetGroup(prev, key));
   }, []);
 
   /**
@@ -462,36 +470,58 @@ export const WeekRoutineExercisesEditor: React.FC<
             className="flex-1 min-w-[200px] h-11 rounded-pill px-lg bg-fill-tertiary text-fg placeholder-fg-tertiary text-base font-semibold border border-transparent outline-none transition-colors focus:border-primary disabled:cursor-default"
           />
 
-          {/* Botón "Últimos valores" — solo coach con routine_id */}
-          {mode === "coach" && studentId != null && weekRoutine.routine_id && !readOnly && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="md"
-              loading={fillLoading}
-              disabled={fillLoading || saving}
-              onClick={handleFillFromLastLog}
-              iconLeft={<History size={16} />}
-              title="Pegar los valores del último entrenamiento del alumno"
-            >
-              Últimos valores
-            </Button>
-          )}
+          {/* Botón "Últimos valores" — solo aplica en modo coach con routine_id.
+              En "editar rutina" (own) se muestra pero disabled. */}
+          {(() => {
+            const canFillLastLog =
+              mode === "coach" && studentId != null && !!weekRoutine.routine_id && !readOnly;
+            return (
+              <Tooltip
+                label={
+                  canFillLastLog
+                    ? "Pegar los valores del último entrenamiento del alumno"
+                    : "Disponible al editar la planificación de un alumno"
+                }
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  loading={fillLoading}
+                  disabled={!canFillLastLog || fillLoading || saving}
+                  onClick={handleFillFromLastLog}
+                  iconLeft={<History size={16} />}
+                >
+                  Últimos valores
+                </Button>
+              </Tooltip>
+            );
+          })()}
 
-          {/* Botón "Semana pasada" — ambos modos, requiere prevExercises */}
-          {prevExercises && prevExercises.length > 0 && !readOnly && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="md"
-              disabled={fillLoading || saving}
-              onClick={handleFillFromPreviousWeek}
-              iconLeft={<CalendarClock size={16} />}
-              title="Pegar los valores planificados en la semana anterior"
-            >
-              Semana pasada
-            </Button>
-          )}
+          {/* Botón "Semana pasada" — ambos modos; disabled si no hay semana previa. */}
+          {(() => {
+            const canFillPrevWeek = !!prevExercises && prevExercises.length > 0 && !readOnly;
+            return (
+              <Tooltip
+                label={
+                  canFillPrevWeek
+                    ? "Pegar los valores planificados en la semana anterior"
+                    : "No hay una semana anterior con esta rutina"
+                }
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  disabled={!canFillPrevWeek || fillLoading || saving}
+                  onClick={handleFillFromPreviousWeek}
+                  iconLeft={<CalendarClock size={16} />}
+                >
+                  Semana pasada
+                </Button>
+              </Tooltip>
+            );
+          })()}
 
           {!readOnly && (
             <>
@@ -520,34 +550,30 @@ export const WeekRoutineExercisesEditor: React.FC<
         </div>
       )}
 
-      {/* ── Barra de acción del modo combinar ── */}
+      {/* ── Barra de acción del modo combinar ──
+          Misma altura que la barra normal (h-11, sin padding vertical) para que
+          la pantalla no se mueva al entrar/salir del modo. El recuadro ámbar se
+          dibuja con `outline` (no ocupa espacio en el layout). */}
       {combineMode && (
-        <div
-          className="flex items-center gap-md flex-wrap rounded-lg px-lg py-md"
-          style={{
-            background: "var(--warning-alpha-08)",
-            border: "2px solid var(--warning)",
-          }}
-        >
-          <span className="text-sm font-semibold flex-1" style={{ color: "var(--warning)" }}>
-            Seleccioná los ejercicios a combinar en superset
-          </span>
+        <div className="flex items-center gap-md min-h-11">
+          <Button
+            type="button"
+            variant="ghost"
+            size="md"
+            onClick={handleCancelCombine}
+            className="flex-1"
+          >
+            Cancelar
+          </Button>
           <Button
             type="button"
             variant="primary"
             size="md"
             disabled={combineSelectedKeys.size < 2}
             onClick={handleConfirmCombine}
+            className="flex-1"
           >
             Combinar ({combineSelectedKeys.size})
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="md"
-            onClick={handleCancelCombine}
-          >
-            Cancelar
           </Button>
         </div>
       )}
@@ -568,65 +594,83 @@ export const WeekRoutineExercisesEditor: React.FC<
             const groupStartIndex = displayIndex;
             displayIndex += item.memberBlocks.length;
             return (
-              <div
-                key={`sg-${item.groupId}`}
-                className="rounded-lg overflow-hidden"
-                style={{
-                  border: combineMode
-                    ? "2px solid var(--separator-subtle)"
-                    : "2px solid var(--primary-alpha-20)",
-                  background: "var(--card)",
-                }}
-              >
+              <div key={`sg-${item.groupId}`} className="flex gap-sm">
+                {/* Acento ámbar redondeado a la izquierda (estilo mobile) */}
                 <div
-                  className="px-xl py-xs flex items-center gap-md"
-                  style={{ borderBottom: "1px solid var(--separator-subtle)" }}
-                >
-                  <Badge variant="purple" size="sm">
-                    Superset
-                  </Badge>
-                  {/* Botón "Separar" — solo fuera del modo combinar y si no readOnly */}
-                  {!combineMode && !readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => handleUngroupSuperset(item.groupId)}
-                      className="ml-auto text-xs font-medium px-sm py-xxs rounded-pill transition-colors"
-                      style={{
-                        color: "var(--fg-tertiary)",
-                        background: "var(--fill-secondary)",
-                      }}
-                      onMouseEnter={(e) =>
-                        ((e.currentTarget as HTMLButtonElement).style.color = "var(--fg)")
-                      }
-                      onMouseLeave={(e) =>
-                        ((e.currentTarget as HTMLButtonElement).style.color = "var(--fg-tertiary)")
-                      }
-                    >
-                      Separar
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-col gap-0">
-                  {item.memberBlocks.map((block, memberIdx) => {
-                    const gIdx = groupStartIndex + memberIdx;
-                    return (
-                      <ExerciseBlock
-                        key={block._key}
-                        variants={[block]}
-                        groupIndex={gIdx}
-                        totalGroups={totalVisualGroups}
-                        readOnly={readOnly || combineMode}
-                        defaultExpanded={false}
-                        onUpdate={handleUpdate}
-                        onRemove={handleRemove}
-                        onReorderGroup={handleReorderGroup}
-                        onAddVariant={handleAddVariant}
-                        combineMode={combineMode}
-                        combineSelected={combineSelectedKeys.has(block._key)}
-                        onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
-                      />
-                    );
-                  })}
+                  className="w-[3px] rounded-full self-stretch flex-shrink-0"
+                  style={{
+                    background: combineMode ? "var(--separator)" : "var(--warning)",
+                    opacity: combineMode ? 1 : 0.8,
+                  }}
+                />
+                <div className="flex-1 min-w-0 flex flex-col gap-sm">
+                  {/* Chip pill "Superset · N ejercicios" */}
+                  <div
+                    className="self-start inline-flex items-center gap-sm pl-md pr-xs py-xxs rounded-pill"
+                    style={{
+                      background: "var(--warning-alpha-12)",
+                      border: "1px solid var(--warning-alpha-30)",
+                    }}
+                  >
+                    <span className="flex items-center gap-xs">
+                      <Link2 size={14} style={{ color: "var(--warning)" }} />
+                      <span
+                        className="text-xs font-semibold tracking-wide whitespace-nowrap"
+                        style={{ color: "var(--warning)" }}
+                      >
+                        Superset · {item.memberBlocks.length}{" "}
+                        {item.memberBlocks.length === 1 ? "ejercicio" : "ejercicios"}
+                      </span>
+                    </span>
+                    {/* Separar — solo fuera del modo combinar y si no readOnly */}
+                    {!combineMode && !readOnly && (
+                      <>
+                        <span
+                          className="w-px h-4 flex-shrink-0"
+                          style={{ background: "var(--warning-alpha-30)" }}
+                        />
+                        <button
+                          type="button"
+                          title="Separar superset"
+                          aria-label="Separar superset"
+                          onClick={() => handleUngroupSuperset(item.groupId)}
+                          className="flex items-center justify-center w-6 h-6 rounded-pill transition-opacity hover:opacity-80 flex-shrink-0"
+                          style={{
+                            color: "var(--destructive)",
+                            background: "var(--destructive-alpha-12)",
+                          }}
+                        >
+                          <Unlink2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {/* Cards de los ejercicios del grupo */}
+                  <div className="flex flex-col gap-sm">
+                    {item.memberBlocks.map((block, memberIdx) => {
+                      const gIdx = groupStartIndex + memberIdx;
+                      return (
+                        <ExerciseBlock
+                          key={block._key}
+                          variants={[block]}
+                          groupIndex={gIdx}
+                          totalGroups={totalVisualGroups}
+                          readOnly={readOnly || combineMode}
+                          defaultExpanded={false}
+                          onUpdate={handleUpdate}
+                          onRemove={handleRemove}
+                          onReorderGroup={handleReorderGroup}
+                          onAddVariant={handleAddVariant}
+                          onRemoveFromGroup={
+                            !readOnly ? () => handleRemoveFromGroup(block._key) : undefined
+                          }
+                          combineMode={combineMode}
+                          combineSelected={combineSelectedKeys.has(block._key)}
+                          onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );

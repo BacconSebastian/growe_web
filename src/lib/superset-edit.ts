@@ -123,6 +123,43 @@ export function ungroupSuperset(
   );
 }
 
+// ─── removeFromSupersetGroup ──────────────────────────────────────────────────
+
+/**
+ * Saca UN ejercicio (por `_key`) de su grupo de superset. Si tras quitarlo el
+ * grupo queda con un solo miembro, ese miembro también se desagrupa (un grupo
+ * de 1 no es válido) → la combinación se disuelve por completo.
+ *
+ * TWIN FILE: mobile/lib/superset.ts #removeFromGroup
+ *
+ * @param blocks Array de bloques. No se muta.
+ * @param key    `_key` del bloque a sacar del grupo.
+ * @returns Nueva copia del array con el bloque (y, si corresponde, el grupo) desagrupado.
+ */
+export function removeFromSupersetGroup(
+  blocks: ExerciseBlockData[],
+  key: string,
+): ExerciseBlockData[] {
+  const target = blocks.find((b) => b._key === key);
+  const groupId = target?.superset_group;
+  if (!groupId) return blocks.map((b) => ({ ...b }));
+
+  // Miembros que quedarían en el grupo tras sacar el target.
+  const remaining = blocks.filter(
+    (b) => b.superset_group === groupId && b._key !== key,
+  );
+
+  // Si queda <2, disolver todo el grupo; si no, solo sacar el target.
+  const dissolve = remaining.length < 2;
+
+  return blocks.map((b) => {
+    if (b._key === key) return { ...b, superset_group: null };
+    if (dissolve && b.superset_group === groupId)
+      return { ...b, superset_group: null };
+    return { ...b };
+  });
+}
+
 // ─── remapSupersetGroups ───────────────────────────────────────────────────────
 
 /**

@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import {
   ChevronUp,
   ChevronRight,
-  ChevronDown,
   Settings2,
   Trash2,
   Plus,
@@ -13,6 +12,7 @@ import {
   Users,
   MessageCircle,
   Link2,
+  Unlink2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -115,6 +115,11 @@ interface ExerciseBlockProps {
   // ── Combine mode (opcionales — no pasan desde WeekRoutineExercisesEditor) ──
   /** Arranca el modo combinar con este grupo como primer seleccionado. */
   onStartCombine?: () => void;
+  /**
+   * Saca este ejercicio de su grupo de superset. Se pasa solo a miembros de un
+   * grupo combinado → el botón "combinar" muta a "descombinar" (rojo, cadena rota).
+   */
+  onRemoveFromGroup?: () => void;
   /** Si true, el editor está en modo "seleccionar para combinar". */
   combineMode?: boolean;
   /** Si true, este grupo está seleccionado para ser combinado. */
@@ -209,6 +214,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   onReorderGroup,
   onAddVariant,
   onStartCombine,
+  onRemoveFromGroup,
   combineMode = false,
   combineSelected = false,
   onToggleCombineSelect,
@@ -237,6 +243,9 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   // Variante activa (clampeada al rango válido)
   const safeIdx = Math.min(activeVariantIdx, variants.length - 1);
   const data = variants[safeIdx];
+
+  // ¿Este ejercicio pertenece a un grupo de superset? (combinado)
+  const isCombined = variants.some((v) => v.superset_group != null);
 
   // Auto-abrir el buscador inline cuando la variante activa no tiene nombre
   // (ej. recién agregada) y no fue cancelada manualmente.
@@ -483,34 +492,71 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
             {/* Acciones — siempre visibles, a la derecha */}
             <div className="flex items-center gap-xs flex-shrink-0">
               {!readOnly && (
-                <>
-                  <IconButton
-                    title="Cambiar ejercicio"
-                    onClick={() => openNaming(data._key)}
-                  >
-                    <Pencil size={15} />
-                  </IconButton>
-                  <button
-                    type="button"
-                    title="Eliminar ejercicio"
-                    aria-label="Eliminar ejercicio"
-                    onClick={() => setShowRemoveConfirm(true)}
-                    className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80"
-                    style={{
-                      background: "var(--destructive-alpha-12)",
-                      color: "var(--destructive)",
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </>
+                <IconButton
+                  title="Cambiar ejercicio"
+                  onClick={() => openNaming(data._key)}
+                  iconColor="var(--primary)"
+                  bg="var(--primary-alpha-12)"
+                >
+                  <Pencil size={15} />
+                </IconButton>
               )}
-              <IconButton title="Expandir" onClick={() => setExpanded(true)}>
-                <ChevronDown size={15} />
+              {/* Combinar (ámbar) si no está combinado; descombinar (rojo) si lo está */}
+              {!readOnly && isCombined && onRemoveFromGroup ? (
+                <IconButton
+                  title="Sacar de la combinación"
+                  onClick={onRemoveFromGroup}
+                  iconColor="var(--destructive)"
+                  bg="var(--destructive-alpha-12)"
+                >
+                  <Unlink2 size={15} />
+                </IconButton>
+              ) : (
+                !readOnly &&
+                onStartCombine && (
+                  <IconButton
+                    title="Combinar ejercicios (superset)"
+                    onClick={onStartCombine}
+                    iconColor="var(--warning)"
+                    bg="var(--warning-alpha-20)"
+                  >
+                    <Link2 size={15} />
+                  </IconButton>
+                )
+              )}
+              {/* Personalizar variables */}
+              <IconButton
+                title="Personalizar variables"
+                onClick={() => setShowVarsModal(true)}
+                disabled={readOnly}
+              >
+                <Settings2 size={15} />
               </IconButton>
+              {!readOnly && (
+                <button
+                  type="button"
+                  title="Eliminar ejercicio"
+                  aria-label="Eliminar ejercicio"
+                  onClick={() => setShowRemoveConfirm(true)}
+                  className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80"
+                  style={{
+                    background: "var(--destructive-alpha-12)",
+                    color: "var(--destructive)",
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           </div>
         </GradientSurface>
+
+        <VariablesConfigModal
+          open={showVarsModal}
+          onClose={() => setShowVarsModal(false)}
+          currentConfig={config}
+          onSave={handleSaveVarsConfig}
+        />
 
         <ConfirmDialog
           open={showRemoveConfirm}
@@ -595,19 +641,35 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
                 <IconButton
                   title="Cambiar ejercicio"
                   onClick={() => openNaming(data._key)}
+                  iconColor="var(--primary)"
+                  bg="var(--primary-alpha-12)"
                 >
                   <Pencil size={15} />
                 </IconButton>
               )}
 
-              {/* Combinar con otro ejercicio — solo si no readOnly y se pasó callback */}
-              {!readOnly && onStartCombine && (
+              {/* Combinar (ámbar) si no está combinado; descombinar (rojo) si lo está */}
+              {!readOnly && isCombined && onRemoveFromGroup ? (
                 <IconButton
-                  title="Combinar ejercicios (superset)"
-                  onClick={onStartCombine}
+                  title="Sacar de la combinación"
+                  onClick={onRemoveFromGroup}
+                  iconColor="var(--destructive)"
+                  bg="var(--destructive-alpha-12)"
                 >
-                  <Link2 size={15} />
+                  <Unlink2 size={15} />
                 </IconButton>
+              ) : (
+                !readOnly &&
+                onStartCombine && (
+                  <IconButton
+                    title="Combinar ejercicios (superset)"
+                    onClick={onStartCombine}
+                    iconColor="var(--warning)"
+                    bg="var(--warning-alpha-20)"
+                  >
+                    <Link2 size={15} />
+                  </IconButton>
+                )
               )}
 
               {/* Variables config */}
@@ -631,13 +693,13 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
             <div className="flex flex-col gap-xs">
               <span
                 className="text-xxs font-semibold uppercase"
-                style={{ color: "var(--fg-tertiary)", letterSpacing: "1px" }}
+                style={{ color: "var(--primary)", letterSpacing: "1px" }}
               >
                 Variantes
               </span>
               <div
                 className="relative rounded-md overflow-hidden p-[2px]"
-                style={{ border: "1px solid var(--separator-subtle)" }}
+                style={{ border: "1px solid var(--primary-alpha-20)" }}
               >
                 <div
                   aria-hidden
@@ -659,8 +721,8 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
                         style={
                           isActive
                             ? {
-                                background: "var(--fill-tertiary)",
-                                color: "var(--fg)",
+                                background: "var(--primary-alpha-12)",
+                                color: "var(--primary)",
                                 fontWeight: 600,
                               }
                             : { background: "transparent", color: "var(--fg-secondary)" }
@@ -1018,24 +1080,20 @@ const IconButton: React.FC<{
   onClick: () => void;
   disabled?: boolean;
   children: React.ReactNode;
-}> = ({ title, onClick, disabled = false, children }) => (
+  /** Color del ícono (default: fg-tertiary). */
+  iconColor?: string;
+  /** Fondo del botón (default: fill-tertiary). */
+  bg?: string;
+}> = ({ title, onClick, disabled = false, children, iconColor, bg }) => (
   <button
     type="button"
     title={title}
     disabled={disabled}
     onClick={onClick}
-    className="w-8 h-8 flex items-center justify-center rounded-pill transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
     style={{
-      background: "var(--fill-tertiary)",
-      color: "var(--fg-tertiary)",
-    }}
-    onMouseEnter={(e) => {
-      if (!disabled)
-        (e.currentTarget as HTMLButtonElement).style.color = "var(--fg)";
-    }}
-    onMouseLeave={(e) => {
-      (e.currentTarget as HTMLButtonElement).style.color =
-        "var(--fg-tertiary)";
+      background: bg ?? "var(--fill-tertiary)",
+      color: iconColor ?? "var(--fg-tertiary)",
     }}
   >
     {children}

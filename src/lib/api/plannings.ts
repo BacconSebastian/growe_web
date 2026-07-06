@@ -76,8 +76,9 @@ export interface SaveWeekRoutineExercisesPayload {
     rest_time?: number | null;
     exercise_type?: ExerciseType;
     is_warmup?: boolean;
-    sets_data?: Array<Record<string, unknown>> | null;
+    sets_data?: unknown[] | null;
     variables_config?: object | null;
+    superset_group?: string | null;
   }>;
 }
 

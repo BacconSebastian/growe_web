@@ -29,6 +29,7 @@ import {
   ClipboardPaste,
   Pencil,
   Check,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -43,7 +44,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PlanningStatusBadge } from "./PlanningStatusBadge";
 import { PlanningWeekDetail } from "./PlanningWeekDetail";
 import { RoutineDayCard, IconButton as CardIconButton } from "./RoutineDayCard";
-import { pasteRoutineIntoWeek } from "@/lib/planning-week-paste";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { pasteRoutineIntoWeek, removeRoutineFromWeekShared } from "@/lib/planning-week-paste";
 
 import {
   getPlanning,
@@ -208,7 +210,9 @@ interface WeekClipboard {
  * de la rutina copiada. No persiste entre recargas.
  */
 export interface RoutineClipboard {
-  /** Título de la rutina de origen (para mostrar en el banner). */
+  /** ID del PlanningWeekRoutine de origen (para resaltar la card copiada). */
+  sourceId: number;
+  /** Título de la rutina de origen. */
   title: string;
   /** Snapshot de ejercicios con UUIDs de superset remapeados. */
   exercises: PlanningWeekRoutineExercise[];
@@ -392,7 +396,8 @@ interface WeekCalendarReadonlyProps {
     week: PlanningWeek,
     targetWkRt: PlanningWeekRoutine | null,
     targetDay: DayOfWeek | null
-  ) => void;
+  ) => Promise<void>;
+  onRemoveRoutine: (week: PlanningWeek, wkRt: PlanningWeekRoutine) => Promise<void>;
 }
 
 const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
@@ -402,7 +407,51 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
   routineClipboard,
   onCopyRoutine,
   onPasteRoutine,
+  onRemoveRoutine,
 }) => {
+  // Celda que está pegando ahora (para overlay de carga). Key: wkRt-<id> | day-<dow>.
+  const [pastingKey, setPastingKey] = useState<string | null>(null);
+  // Rutina pendiente de quitar (confirmación) + loading.
+  const [removeTarget, setRemoveTarget] = useState<PlanningWeekRoutine | null>(null);
+  const [removing, setRemoving] = useState(false);
+  // Pegado pendiente de confirmación.
+  const [pastePending, setPastePending] = useState<{
+    key: string;
+    targetWkRt: PlanningWeekRoutine | null;
+    targetDay: DayOfWeek | null;
+  } | null>(null);
+
+  const doPaste = async (
+    key: string,
+    targetWkRt: PlanningWeekRoutine | null,
+    targetDay: DayOfWeek | null
+  ) => {
+    setPastingKey(key);
+    try {
+      await onPasteRoutine(week, targetWkRt, targetDay);
+    } finally {
+      setPastingKey(null);
+    }
+  };
+
+  const confirmPaste = async () => {
+    if (!pastePending) return;
+    const { key, targetWkRt, targetDay } = pastePending;
+    setPastePending(null);
+    await doPaste(key, targetWkRt, targetDay);
+  };
+
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    try {
+      await onRemoveRoutine(week, removeTarget);
+      setRemoveTarget(null);
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const routineByDay = useMemo(() => {
     const map = new Map<DayOfWeek, PlanningWeekRoutine>();
     for (const wr of week.routines) {
@@ -442,10 +491,17 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
                   title={wr.routine_title}
                   exercises={counts.exercises}
                   sets={counts.sets}
+                  loading={pastingKey === `wkRt-${wr.id}`}
+                  metaAlwaysVisible={routineClipboard?.sourceId === wr.id}
                   metaOverlay={
                     <>
                       <CardIconButton
-                        title="Copiar contenido del día"
+                        title={
+                          routineClipboard?.sourceId === wr.id
+                            ? "Copiado — click para descopiar"
+                            : "Copiar contenido del día"
+                        }
+                        active={routineClipboard?.sourceId === wr.id}
                         onClick={(e) => {
                           e.stopPropagation();
                           onCopyRoutine(wr);
@@ -453,23 +509,41 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
                       >
                         <Copy size={13} />
                       </CardIconButton>
-                      {routineClipboard && canEditRoutine(wr) && (
-                        <CardIconButton
-                          title={`Pegar "${routineClipboard.title}" aquí`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPasteRoutine(week, wr, effectiveDay(wr));
-                          }}
-                        >
-                          <ClipboardPaste size={13} />
-                        </CardIconButton>
-                      )}
+                      <CardIconButton
+                        title={
+                          routineClipboard
+                            ? `Pegar "${routineClipboard.title}" acá`
+                            : "No hay rutina copiada"
+                        }
+                        disabled={!routineClipboard || !canEditRoutine(wr)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPastePending({
+                            key: `wkRt-${wr.id}`,
+                            targetWkRt: wr,
+                            targetDay: effectiveDay(wr),
+                          });
+                        }}
+                      >
+                        <ClipboardPaste size={13} />
+                      </CardIconButton>
+                      <CardIconButton
+                        title="Quitar rutina de este día"
+                        destructive
+                        disabled={!canEditRoutine(wr)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRemoveTarget(wr);
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </CardIconButton>
                     </>
                   }
                 />
               ) : (
                 <div
-                  className="group w-full flex flex-col items-center justify-center gap-xs rounded-lg px-xs py-md text-center"
+                  className="group relative w-full flex flex-col items-center justify-center gap-xs rounded-lg px-xs py-md text-center"
                   style={{
                     minHeight: "84px",
                     background: "transparent",
@@ -482,26 +556,46 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
                   >
                     —
                   </span>
-                  {/* Botón pegar en la misma zona que las cards con rutina.
+                  {/* Mismos 3 botones que las cards con rutina (copiar/eliminar disabled).
                       La línea invisible reserva el alto del contador para alinear. */}
                   <div className="relative w-full mt-sm">
                     <span className="block text-xxs leading-tight opacity-0" aria-hidden>
                       &nbsp;
                     </span>
-                    {routineClipboard && (
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto">
-                        <CardIconButton
-                          title={`Pegar "${routineClipboard.title}" aquí`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPasteRoutine(week, null, dow);
-                          }}
-                        >
-                          <ClipboardPaste size={13} />
-                        </CardIconButton>
-                      </div>
-                    )}
+                    <div className="absolute inset-0 flex items-center justify-center gap-xs opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto">
+                      <CardIconButton title="No hay rutina para copiar" disabled onClick={(e) => e.stopPropagation()}>
+                        <Copy size={13} />
+                      </CardIconButton>
+                      <CardIconButton
+                        title={
+                          routineClipboard ? `Pegar "${routineClipboard.title}" acá` : "No hay rutina copiada"
+                        }
+                        disabled={!routineClipboard}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPastePending({ key: `day-${dow}`, targetWkRt: null, targetDay: dow });
+                        }}
+                      >
+                        <ClipboardPaste size={13} />
+                      </CardIconButton>
+                      <CardIconButton
+                        title="No hay rutina para quitar"
+                        destructive
+                        disabled
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Trash2 size={13} />
+                      </CardIconButton>
+                    </div>
                   </div>
+                  {pastingKey === `day-${dow}` && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center rounded-lg"
+                      style={{ background: "var(--overlay-medium)" }}
+                    >
+                      <Loader2 className="animate-spin" size={20} style={{ color: "var(--fg)" }} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -529,7 +623,12 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
                 {wr.routine_title}
               </span>
               <CardIconButton
-                title="Copiar contenido de esta rutina"
+                title={
+                  routineClipboard?.sourceId === wr.id
+                    ? "Copiado — click para descopiar"
+                    : "Copiar contenido de esta rutina"
+                }
+                active={routineClipboard?.sourceId === wr.id}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCopyRoutine(wr);
@@ -537,21 +636,67 @@ const WeekCalendarReadonly: React.FC<WeekCalendarReadonlyProps> = ({
               >
                 <Copy size={13} />
               </CardIconButton>
-              {routineClipboard && canEditRoutine(wr) && (
+              {pastingKey === `wkRt-${wr.id}` ? (
+                <Loader2 className="animate-spin" size={16} style={{ color: "var(--fg-tertiary)" }} />
+              ) : (
                 <CardIconButton
-                  title={`Pegar "${routineClipboard.title}" aquí`}
+                  title={
+                    routineClipboard ? `Pegar "${routineClipboard.title}" acá` : "No hay rutina copiada"
+                  }
+                  disabled={!routineClipboard || !canEditRoutine(wr)}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onPasteRoutine(week, wr, null);
+                    setPastePending({ key: `wkRt-${wr.id}`, targetWkRt: wr, targetDay: null });
                   }}
                 >
                   <ClipboardPaste size={13} />
                 </CardIconButton>
               )}
+              <CardIconButton
+                title="Quitar rutina de la semana"
+                destructive
+                disabled={!canEditRoutine(wr)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRemoveTarget(wr);
+                }}
+              >
+                <Trash2 size={13} />
+              </CardIconButton>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pastePending !== null}
+        title="Pegar rutina"
+        description={
+          !pastePending || !routineClipboard
+            ? ""
+            : pastePending.targetWkRt
+              ? `¿Pegar "${routineClipboard.title}" en "${pastePending.targetWkRt.routine_title}"? Se reemplazarán los ejercicios actuales de ese día.`
+              : `¿Pegar "${routineClipboard.title}" en este día?`
+        }
+        confirmLabel="Pegar"
+        confirmVariant="primary"
+        onConfirm={confirmPaste}
+        onClose={() => setPastePending(null)}
+      />
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Quitar rutina"
+        description={
+          removeTarget
+            ? `¿Quitar "${removeTarget.routine_title}" de esta semana? La rutina no se elimina, solo se le saca el día asignado.`
+            : ""
+        }
+        confirmLabel="Quitar"
+        confirmVariant="danger"
+        loading={removing}
+        onConfirm={confirmRemove}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   );
 };
@@ -580,7 +725,8 @@ interface WeekCardProps {
     week: PlanningWeek,
     targetWkRt: PlanningWeekRoutine | null,
     targetDay: DayOfWeek | null
-  ) => void;
+  ) => Promise<void>;
+  onRemoveRoutine: (week: PlanningWeek, wkRt: PlanningWeekRoutine) => Promise<void>;
 }
 
 const WeekCard: React.FC<WeekCardProps> = ({
@@ -601,6 +747,7 @@ const WeekCard: React.FC<WeekCardProps> = ({
   routineClipboard,
   onCopyRoutine,
   onPasteRoutine,
+  onRemoveRoutine,
 }) => {
   const routineCount = week.routines.length;
 
@@ -679,6 +826,7 @@ const WeekCard: React.FC<WeekCardProps> = ({
               routineClipboard={routineClipboard}
               onCopyRoutine={onCopyRoutine}
               onPasteRoutine={onPasteRoutine}
+              onRemoveRoutine={onRemoveRoutine}
             />
           </div>
         </div>
@@ -904,15 +1052,20 @@ export const PlanningOverview: React.FC<PlanningOverviewProps> = ({
   };
 
   /**
-   * Copia el contenido de una rutina de la semana al clipboard de día.
-   * Aplica remapSupersetGroupsRaw para que los UUIDs de superset no se compartan
-   * entre la fuente y el destino al pegar.
+   * Copia el contenido de una rutina al clipboard de día (toggle).
+   * - Si la rutina ya estaba copiada (mismo sourceId) → descopia (clipboard = null).
+   * - Si no → copia (aplica remapSupersetGroupsRaw para no compartir UUIDs de superset).
    */
   const handleCopyRoutine = useCallback((wkRt: PlanningWeekRoutine) => {
-    setRoutineClipboard({
-      title: wkRt.routine_title,
-      exercises: remapSupersetGroupsRaw(wkRt.exercises),
-    });
+    setRoutineClipboard((prev) =>
+      prev?.sourceId === wkRt.id
+        ? null
+        : {
+            sourceId: wkRt.id,
+            title: wkRt.routine_title,
+            exercises: remapSupersetGroupsRaw(wkRt.exercises),
+          }
+    );
   }, []);
 
   /** Mergea una semana actualizada en el planning SIN tocar selectedWeek. */
@@ -966,6 +1119,28 @@ export const PlanningOverview: React.FC<PlanningOverviewProps> = ({
       }
     },
     [routineClipboard, mode, studentId, mergeWeekIntoPlanning]
+  );
+
+  /**
+   * Quita una rutina de la semana (le saca el día) desde el resumen.
+   * No borra el template del alumno; solo elimina el pivot.
+   */
+  const handleRemoveRoutineFromWeek = useCallback(
+    async (targetWeek: PlanningWeek, wkRt: PlanningWeekRoutine) => {
+      setActionError(null);
+      try {
+        const updatedWeek = await removeRoutineFromWeekShared({
+          week: targetWeek,
+          wkRtId: wkRt.id,
+          mode,
+          studentId,
+        });
+        mergeWeekIntoPlanning(updatedWeek);
+      } catch (err) {
+        setActionError(getErrorMessage(err, "No se pudo quitar la rutina."));
+      }
+    },
+    [mode, studentId, mergeWeekIntoPlanning]
   );
 
   // ─── Render: loading ────────────────────────────────────────────────────────
@@ -1081,33 +1256,6 @@ export const PlanningOverview: React.FC<PlanningOverviewProps> = ({
         </div>
 
         {actionError && <ErrorBanner message={actionError} dismissible />}
-
-        {/* Banner clipboard de día — se mantiene al navegar ◀▶ entre semanas */}
-        {routineClipboard && (
-          <div
-            className="flex items-center justify-between gap-md px-xl py-md rounded-lg"
-            style={{
-              background: "var(--warning-alpha-08)",
-              border: "1px solid var(--warning-alpha-20)",
-            }}
-          >
-            <div className="flex items-center gap-sm">
-              <Clipboard size={14} style={{ color: "var(--warning)" }} />
-              <span className="text-sm text-fg">
-                Día copiado: <strong>{routineClipboard.title}</strong>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setRoutineClipboard(null)}
-              className="w-7 h-7 flex items-center justify-center rounded-pill text-fg-tertiary hover:text-fg transition-colors flex-shrink-0"
-              style={{ background: "var(--fill-tertiary)" }}
-              title="Limpiar clipboard"
-            >
-              <Check size={13} />
-            </button>
-          </div>
-        )}
 
         <PlanningWeekDetail
           mode={mode}
@@ -1259,6 +1407,7 @@ export const PlanningOverview: React.FC<PlanningOverviewProps> = ({
                 routineClipboard={routineClipboard}
                 onCopyRoutine={handleCopyRoutine}
                 onPasteRoutine={handlePasteRoutineIntoWeek}
+                onRemoveRoutine={handleRemoveRoutineFromWeek}
               />
             );
           })}

@@ -16,12 +16,13 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Copy, ClipboardPaste } from "lucide-react";
+import { Pencil, Copy, ClipboardPaste, Trash2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SkeletonLine } from "@/components/ui/Skeleton";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { GradientSurface } from "@/components/ui/GradientSurface";
 import { Input } from "@/components/ui/Input";
 import { getErrorMessage } from "@/lib/utils";
@@ -272,6 +273,20 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
   // Rutina seleccionada → se muestra inline debajo del calendario (no modal)
   const [selectedWkRtId, setSelectedWkRtId] = useState<number | null>(null);
 
+  // Celda que está pegando ahora (para overlay de carga). Key: wkRt-<id> | day-<dow>.
+  const [pastingKey, setPastingKey] = useState<string | null>(null);
+
+  // Rutina pendiente de quitar de la semana (confirmación) + loading.
+  const [removeTarget, setRemoveTarget] = useState<PlanningWeekRoutine | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  // Pegado pendiente de confirmación.
+  const [pastePending, setPastePending] = useState<{
+    key: string;
+    targetWkRt: PlanningWeekRoutine | null;
+    targetDay: DayOfWeek | null;
+  } | null>(null);
+
   // Primera rutina por día efectivo (máx 1 visible por celda)
   const routineByDay = useMemo(() => {
     const map = new Map<DayOfWeek, PlanningWeekRoutine>();
@@ -505,6 +520,39 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
     [routineClipboard, week, mode, studentId, onWeekUpdated],
   );
 
+  // Wrapper que marca la celda destino como "pegando" para el overlay de carga.
+  const pasteWithLoading = useCallback(
+    async (key: string, targetWkRt: PlanningWeekRoutine | null, targetDay: DayOfWeek | null) => {
+      setPastingKey(key);
+      try {
+        await handlePasteRoutine(targetWkRt, targetDay);
+      } finally {
+        setPastingKey(null);
+      }
+    },
+    [handlePasteRoutine],
+  );
+
+  // Confirmar pegado (puede reemplazar ejercicios existentes).
+  const confirmPaste = useCallback(async () => {
+    if (!pastePending) return;
+    const { key, targetWkRt, targetDay } = pastePending;
+    setPastePending(null);
+    await pasteWithLoading(key, targetWkRt, targetDay);
+  }, [pastePending, pasteWithLoading]);
+
+  // Confirmar quitar rutina de la semana (le saca el día; no borra el template).
+  const confirmRemove = useCallback(async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    try {
+      await handleRemoveRoutine(removeTarget.id);
+      setRemoveTarget(null);
+    } finally {
+      setRemoving(false);
+    }
+  }, [removeTarget, handleRemoveRoutine]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -535,68 +583,119 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
                       exercises={counts.exercises}
                       sets={counts.sets}
                       selected={selectedWkRtId === wr.id}
+                      loading={pastingKey === `wkRt-${wr.id}`}
+                      metaAlwaysVisible={routineClipboard?.sourceId === wr.id}
                       onClick={() => handleSelectDayRoutine(wr)}
                       titleAttr={`${wr.routine_title}${canEditCell ? " · click para editar" : " · click para ver"}`}
                       metaOverlay={
                         <>
-                          {/* Copiar — siempre disponible */}
-                          {onCopyRoutine && (
-                            <IconButton
-                              title="Copiar contenido del día"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onCopyRoutine(wr);
-                              }}
-                            >
-                              <Copy size={13} />
-                            </IconButton>
-                          )}
-                          {/* Pegar — solo si hay clipboard y se puede editar la celda */}
-                          {routineClipboard && canEditCell && (
-                            <IconButton
-                              title={`Pegar "${routineClipboard.title}" aquí`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePasteRoutine(wr, effectiveDay(wr));
-                              }}
-                            >
-                              <ClipboardPaste size={13} />
-                            </IconButton>
-                          )}
+                          {/* Copiar / descopiar (toggle) */}
+                          <IconButton
+                            title={
+                              routineClipboard?.sourceId === wr.id
+                                ? "Copiado — click para descopiar"
+                                : "Copiar contenido del día"
+                            }
+                            active={routineClipboard?.sourceId === wr.id}
+                            disabled={!onCopyRoutine}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCopyRoutine?.(wr);
+                            }}
+                          >
+                            <Copy size={13} />
+                          </IconButton>
+                          {/* Pegar — disabled si no hay clipboard o no se puede editar */}
+                          <IconButton
+                            title={
+                              routineClipboard
+                                ? `Pegar "${routineClipboard.title}" acá`
+                                : "No hay rutina copiada"
+                            }
+                            disabled={!routineClipboard || !canEditCell}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPastePending({
+                                key: `wkRt-${wr.id}`,
+                                targetWkRt: wr,
+                                targetDay: effectiveDay(wr),
+                              });
+                            }}
+                          >
+                            <ClipboardPaste size={13} />
+                          </IconButton>
+                          {/* Quitar rutina del día (no borra el template) */}
+                          <IconButton
+                            title="Quitar rutina de este día"
+                            destructive
+                            disabled={!canEditCell}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRemoveTarget(wr);
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </IconButton>
                         </>
                       }
                     />
                   ) : (
                     /* Celda vacía */
-                    <div className="w-full relative group">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRoutinePicker(dow)}
-                        className="w-full flex flex-col items-center justify-center rounded-lg px-xs text-center transition-colors hover:bg-fill-tertiary"
-                        style={{
-                          minHeight: "84px",
-                          background: "transparent",
-                          border: "1px dashed var(--separator)",
-                          cursor: "pointer",
-                        }}
-                        title="Asignar rutina a este día"
-                      >
-                        <span className="text-xl font-bold leading-none" style={{ color: "var(--fg-tertiary)" }}>
-                          +
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenRoutinePicker(dow)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleOpenRoutinePicker(dow);
+                        }
+                      }}
+                      className="group relative w-full flex flex-col items-center justify-center gap-xs rounded-lg px-xs py-md text-center cursor-pointer transition-colors hover:bg-fill-tertiary"
+                      style={{
+                        minHeight: "84px",
+                        background: "transparent",
+                        border: "1px dashed var(--separator)",
+                      }}
+                      title="Asignar rutina a este día"
+                    >
+                      <span className="text-xl font-bold leading-none" style={{ color: "var(--fg-tertiary)" }}>
+                        +
+                      </span>
+                      {/* Misma zona/botones que las cards con rutina (copiar/eliminar disabled) */}
+                      <div className="relative w-full mt-sm">
+                        <span className="block text-xxs leading-tight opacity-0" aria-hidden>
+                          &nbsp;
                         </span>
-                      </button>
-                      {/* Botón pegar en celda vacía */}
-                      {routineClipboard && (
-                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="absolute inset-0 flex items-center justify-center gap-xs opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto">
+                          <IconButton title="No hay rutina para copiar" disabled onClick={(e) => e.stopPropagation()}>
+                            <Copy size={13} />
+                          </IconButton>
                           <IconButton
-                            title={`Pegar "${routineClipboard.title}" aquí`}
+                            title={
+                              routineClipboard
+                                ? `Pegar "${routineClipboard.title}" acá`
+                                : "No hay rutina copiada"
+                            }
+                            disabled={!routineClipboard}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handlePasteRoutine(null, dow);
+                              setPastePending({ key: `day-${dow}`, targetWkRt: null, targetDay: dow });
                             }}
                           >
                             <ClipboardPaste size={13} />
                           </IconButton>
+                          <IconButton title="No hay rutina para quitar" destructive disabled onClick={(e) => e.stopPropagation()}>
+                            <Trash2 size={13} />
+                          </IconButton>
+                        </div>
+                      </div>
+                      {pastingKey === `day-${dow}` && (
+                        <div
+                          className="absolute inset-0 flex items-center justify-center rounded-lg"
+                          style={{ background: "var(--overlay-medium)" }}
+                        >
+                          <Loader2 className="animate-spin" size={20} style={{ color: "var(--fg)" }} />
                         </div>
                       )}
                     </div>
@@ -628,30 +727,51 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
                     >
                       {wr.routine_title}
                     </button>
-                    {/* Copiar pill — siempre disponible */}
-                    {onCopyRoutine && (
+                    {/* Copiar / descopiar pill (toggle) */}
+                    <IconButton
+                      title={
+                        routineClipboard?.sourceId === wr.id
+                          ? "Copiado — click para descopiar"
+                          : "Copiar contenido de esta rutina"
+                      }
+                      active={routineClipboard?.sourceId === wr.id}
+                      disabled={!onCopyRoutine}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCopyRoutine?.(wr);
+                      }}
+                    >
+                      <Copy size={13} />
+                    </IconButton>
+                    {/* Pegar en pill — disabled si no hay clipboard o no se puede editar */}
+                    {pastingKey === `wkRt-${wr.id}` ? (
+                      <Loader2 className="animate-spin" size={16} style={{ color: "var(--fg-tertiary)" }} />
+                    ) : (
                       <IconButton
-                        title="Copiar contenido de esta rutina"
+                        title={
+                          routineClipboard ? `Pegar "${routineClipboard.title}" acá` : "No hay rutina copiada"
+                        }
+                        disabled={!routineClipboard || !canEditPill}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onCopyRoutine(wr);
-                        }}
-                      >
-                        <Copy size={13} />
-                      </IconButton>
-                    )}
-                    {/* Pegar en pill — reemplaza ejercicios si es editable */}
-                    {routineClipboard && canEditPill && (
-                      <IconButton
-                        title={`Pegar "${routineClipboard.title}" aquí`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePasteRoutine(wr, null);
+                          setPastePending({ key: `wkRt-${wr.id}`, targetWkRt: wr, targetDay: null });
                         }}
                       >
                         <ClipboardPaste size={13} />
                       </IconButton>
                     )}
+                    {/* Quitar de la semana (no borra el template) */}
+                    <IconButton
+                      title="Quitar rutina de la semana"
+                      destructive
+                      disabled={!canEditPill}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRemoveTarget(wr);
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </IconButton>
                   </div>
                 );
               })}
@@ -695,6 +815,35 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
         open={createRoutineOpen}
         onClose={() => setCreateRoutineOpen(false)}
         onConfirm={handleCreateRoutine}
+      />
+      <ConfirmDialog
+        open={pastePending !== null}
+        title="Pegar rutina"
+        description={
+          !pastePending || !routineClipboard
+            ? ""
+            : pastePending.targetWkRt
+              ? `¿Pegar "${routineClipboard.title}" en "${pastePending.targetWkRt.routine_title}"? Se reemplazarán los ejercicios actuales de ese día.`
+              : `¿Pegar "${routineClipboard.title}" en este día?`
+        }
+        confirmLabel="Pegar"
+        confirmVariant="primary"
+        onConfirm={confirmPaste}
+        onClose={() => setPastePending(null)}
+      />
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Quitar rutina"
+        description={
+          removeTarget
+            ? `¿Quitar "${removeTarget.routine_title}" de esta semana? La rutina no se elimina, solo se le saca el día asignado.`
+            : ""
+        }
+        confirmLabel="Quitar"
+        confirmVariant="danger"
+        loading={removing}
+        onConfirm={confirmRemove}
+        onClose={() => setRemoveTarget(null)}
       />
     </div>
   );

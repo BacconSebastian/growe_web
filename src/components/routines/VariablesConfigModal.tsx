@@ -5,10 +5,7 @@ import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import {
-  CANONICAL_VARIABLES,
-  isCompatibleVariableSet,
-} from "@/lib/exercise-presets";
+import { CANONICAL_VARIABLES, isCompatibleVariableSet } from "@/lib/exercise-presets";
 import type { VariableDef, VariablesConfig } from "@/lib/api/types";
 
 interface VariablesConfigModalProps {
@@ -24,12 +21,7 @@ interface VariablesConfigModalProps {
  * Permite agregar/quitar variables canónicas y custom.
  * Valida pares incompatibles, mínimo 1, máximo 6.
  */
-export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
-  open,
-  onClose,
-  currentConfig,
-  onSave,
-}) => {
+export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({ open, onClose, currentConfig, onSave }) => {
   const [vars, setVars] = useState<VariableDef[]>([]);
   const [customLabel, setCustomLabel] = useState("");
   const [customUnit, setCustomUnit] = useState("");
@@ -58,8 +50,7 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
 
   const handleToggleCanonical = (def: VariableDef) => {
     if (selectedKeys.includes(def.key)) {
-      // Quitar
-      if (vars.length <= 1) return; // Mínimo 1
+      // Quitar — se permite vaciar la lista (no se puede GUARDAR sin variables).
       setVars(vars.filter((v) => v.key !== def.key));
     } else {
       // Agregar
@@ -70,10 +61,8 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
   };
 
   const handleRemoveVar = (key: string) => {
-    if (vars.length <= 1) {
-      setError("Debe existir al menos 1 variable.");
-      return;
-    }
+    // Se permite quitar todas (para rearmar combinaciones); el guardado se
+    // bloquea si no queda ninguna.
     setVars(vars.filter((v) => v.key !== key));
     setError(null);
   };
@@ -189,9 +178,7 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
         {/* Variables seleccionadas (con opción de quitar) */}
         {vars.length > 0 && (
           <div className="flex flex-col gap-xs">
-            <p className="text-sm font-semibold text-fg m-0">
-              Variables activas ({vars.length}/6)
-            </p>
+            <p className="text-sm font-semibold text-fg m-0">Variables activas ({vars.length}/6)</p>
             <div className="flex flex-col gap-xs">
               {vars.map((v) => (
                 <div
@@ -200,12 +187,8 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
                   style={{ background: "var(--fill-tertiary)" }}
                 >
                   <div className="flex items-center gap-sm min-w-0">
-                    <span className="text-sm font-medium text-fg">
-                      {v.label ?? v.key}
-                    </span>
-                    {v.unit && (
-                      <span className="text-xs text-fg-tertiary">({v.unit})</span>
-                    )}
+                    <span className="text-sm font-medium text-fg">{v.label ?? v.key}</span>
+                    {v.unit && <span className="text-xs text-fg-tertiary">({v.unit})</span>}
                     {v.is_custom && (
                       <span
                         className="text-xs px-xs py-xxs rounded-pill font-semibold"
@@ -221,8 +204,7 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleRemoveVar(v.key)}
-                    disabled={vars.length <= 1}
-                    className="text-fg-tertiary hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                    className="text-fg-tertiary hover:text-destructive transition-colors flex-shrink-0"
                     aria-label={`Quitar variable ${v.label ?? v.key}`}
                   >
                     <Trash2 size={14} />
@@ -233,32 +215,43 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
           </div>
         )}
 
+        {/* Sin variables: hint (no se puede guardar vacío) */}
+        {vars.length === 0 && (
+          <div
+            className="flex items-center gap-sm px-md py-sm rounded-md"
+            style={{
+              background: "var(--warning-alpha-08)",
+              border: "1px solid var(--warning-alpha-20)",
+            }}
+          >
+            <AlertTriangle size={14} style={{ color: "var(--warning)" }} className="flex-shrink-0" />
+            <span className="text-sm" style={{ color: "var(--fg-secondary)" }}>
+              Agregá al menos 1 variable para poder guardar.
+            </span>
+          </div>
+        )}
+
         {/* Agregar variable custom */}
         {vars.length < 6 && (
-          <div className="flex flex-col gap-sm" style={{ borderTop: "1px solid var(--separator-subtle)", paddingTop: "var(--space-lg)" }}>
+          <div
+            className="flex flex-col gap-sm"
+            style={{ borderTop: "1px solid var(--separator-subtle)", paddingTop: "var(--space-lg)" }}
+          >
             <p className="text-sm font-semibold text-fg m-0">Agregar variable personalizada</p>
-            <div className="flex gap-sm">
+            <div className="flex flex-col gap-sm">
               <Input
-                placeholder="Nombre (ej: Altura banco)"
+                placeholder="Nombre (ej: Velocidad)"
                 value={customLabel}
                 onChange={(e) => setCustomLabel(e.target.value)}
-                className="flex-1"
                 maxLength={24}
               />
               <Input
                 placeholder="Unidad (opcional)"
                 value={customUnit}
                 onChange={(e) => setCustomUnit(e.target.value)}
-                style={{ width: "100px" }}
                 maxLength={6}
               />
-              <Button
-                variant="outline"
-                size="md"
-                onClick={handleAddCustom}
-                iconLeft={<Plus size={14} />}
-                type="button"
-              >
+              <Button variant="outline" size="md" onClick={handleAddCustom} iconLeft={<Plus size={14} />} type="button">
                 Agregar
               </Button>
             </div>
@@ -277,19 +270,19 @@ export const VariablesConfigModal: React.FC<VariablesConfigModalProps> = ({
           >
             <AlertTriangle size={16} className="flex-shrink-0 mt-px" />
             <span className="text-sm">
-              Variables incompatibles:{" "}
-              {conflicts.map(([a, b]) => `${a} + ${b}`).join(", ")}. Quitá una para continuar.
+              Variables incompatibles: {conflicts.map(([a, b]) => `${a} + ${b}`).join(", ")}. Quitá una para continuar.
             </span>
           </div>
         )}
 
         {/* Error genérico */}
-        {error && (
-          <p className="text-sm text-destructive m-0">{error}</p>
-        )}
+        {error && <p className="text-sm text-destructive m-0">{error}</p>}
 
         {/* Acciones */}
-        <div className="flex gap-sm" style={{ borderTop: "1px solid var(--separator-subtle)", paddingTop: "var(--space-lg)" }}>
+        <div
+          className="flex gap-sm"
+          style={{ borderTop: "1px solid var(--separator-subtle)", paddingTop: "var(--space-lg)" }}
+        >
           <Button
             variant="primary"
             size="md"

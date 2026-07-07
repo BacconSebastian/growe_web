@@ -22,10 +22,11 @@ import {
   ExerciseBlock,
   ExerciseBlockData,
   routineExerciseToBlock,
+  groupVariants,
 } from "@/components/routines/ExerciseBlock";
 import { SupersetGroupSection } from "@/components/routines/SupersetGroupSection";
 import { editableToRoutineSet } from "@/components/routines/SetsTable";
-import { resolveVariablesConfig } from "@/lib/exercise-presets";
+import { resolveVariablesConfig, getPresetVariablesConfig, buildEmptySet } from "@/lib/exercise-presets";
 import { groupBySupersetGroup } from "@/lib/superset-grouping";
 import { getErrorMessage } from "@/lib/utils";
 import {
@@ -40,6 +41,7 @@ import type {
   PlanningWeekRoutineExercise,
   RoutineExercise,
   PlanningWeekRoutine,
+  ExerciseType,
 } from "@/lib/api/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,49 +106,56 @@ function weekRoutineExToRoutineExercise(
 /**
  * Construye el payload de ejercicios que espera el backend al guardar el snapshot.
  *
- * Lee `superset_group` directamente del bloque (no de originalExercises) para que
- * los cambios de agrupamiento hechos en memoria (combineIntoGroup/ungroupSuperset)
- * se persistan correctamente.
+ * - Agrupa bloques por order_index (grupos de variantes) y por superset_group.
+ * - Asigna order_index secuencial (1-based) por grupo de variantes; las variantes
+ *   del mismo grupo comparten el mismo order_index y se diferencian por variant_order.
+ * - Lee superset_group directamente del bloque (no de originalExercises) para que
+ *   los cambios de combineIntoGroup/ungroupSuperset hechos en memoria se persistan.
  *
- * Normaliza contigüidad antes de mapear: los miembros de un grupo se agrupan juntos
- * en el payload, lo que garantiza que el backend reciba grupos contiguos incluso si
- * el usuario reordenó un bloque individual sin mover el grupo completo.
- *
- * El parámetro `originalExercises` ya no se utiliza para superset_group pero se
- * mantiene en la firma para compatibilidad con los call-sites existentes.
+ * Contrato verificado: planning.service.js _buildExerciseRows:171-172 acepta
+ * order_index y variant_order directamente del payload.
  */
 function buildExercisesPayload(
   blocks: ExerciseBlockData[],
   _originalExercises: PlanningWeekRoutineExercise[]
 ): Array<Record<string, unknown>> {
-  // Normalizar contigüidad: reordenar bloques para que los miembros de cada grupo
-  // queden contiguos (misma posición relativa entre sí, insertados en la posición
-  // del primer miembro del grupo).
-  const orderedBlocks = normalizeGroupContiguity(blocks);
+  // Agrupar bloques por order_index (cada grupo = una posición visual con sus variantes)
+  // y normalizar contigüidad de supersets dentro de cada grupo de variantes.
+  const variantGroups = groupVariants(normalizeGroupContiguity(blocks));
 
-  return orderedBlocks.map((block, idx) => {
-    const config = resolveVariablesConfig(
-      block.variables_config,
-      block.exercise_type
-    );
-    const sets = block.sets.map((s) => editableToRoutineSet(s, config));
+  const result: Array<Record<string, unknown>> = [];
 
-    return {
-      exercise_id: block.exercise_id,
-      name: block.name,
-      order_index: idx + 1,
-      series: block.sets.length,
-      repetitions:
-        (block.sets[0] as Record<string, unknown>)?.reps != null
-          ? Number((block.sets[0] as Record<string, unknown>).reps)
-          : 0,
-      exercise_type: block.exercise_type,
-      is_warmup: block.is_warmup,
-      sets_data: sets,
-      variables_config: block.variables_config,
-      superset_group: block.superset_group ?? null,
-    } as Record<string, unknown>;
+  variantGroups.forEach((group, groupIdx) => {
+    const sharedOrderIndex = groupIdx + 1; // 1-based, compartido por todas las variantes
+
+    group.variants.forEach((block) => {
+      const config = resolveVariablesConfig(
+        block.variables_config,
+        block.exercise_type
+      );
+      const sets = block.sets.map((s) => editableToRoutineSet(s, config));
+
+      result.push({
+        exercise_id: block.exercise_id,
+        name: block.name,
+        // Todas las variantes del grupo comparten order_index; se diferencian por variant_order.
+        order_index: sharedOrderIndex,
+        variant_order: block.variant_order ?? 0,
+        series: block.sets.length,
+        repetitions:
+          (block.sets[0] as Record<string, unknown>)?.reps != null
+            ? Number((block.sets[0] as Record<string, unknown>).reps)
+            : 0,
+        exercise_type: block.exercise_type,
+        is_warmup: block.is_warmup,
+        sets_data: sets,
+        variables_config: block.variables_config,
+        superset_group: block.superset_group ?? null,
+      } as Record<string, unknown>);
+    });
   });
+
+  return result;
 }
 
 /**
@@ -242,37 +251,106 @@ export const WeekRoutineExercisesEditor: React.FC<
   );
 
   const handleRemove = useCallback((key: string) => {
-    setBlocks((prev) => prev.filter((b) => b._key !== key));
+    setBlocks((prev) => {
+      const filtered = prev.filter((b) => b._key !== key);
+      // Re-normalizar variant_order dentro de los grupos afectados (igual que RoutineEditor)
+      const groups = groupVariants(filtered);
+      const result: ExerciseBlockData[] = [];
+      groups.forEach((group) => {
+        group.variants.forEach((v, vIdx) => {
+          result.push({ ...v, variant_order: vIdx });
+        });
+      });
+      return result;
+    });
   }, []);
 
   /**
-   * En este editor, cada bloque es un "grupo" de una sola variante.
-   * onReorderGroup recibe (currentOrderIndex, newGroupPosition 1-based).
-   * Aquí el order_index coincide con la posición en el array de blocks.
+   * Reordena el grupo (todas sus variantes) a la posición 1-based dada.
+   * Espeja la implementación de RoutineEditor.handleReorderGroup.
    */
   const handleReorderGroup = useCallback(
     (currentOrderIndex: number, newGroupPosition: number) => {
       setBlocks((prev) => {
-        const idx = prev.findIndex((b) => b.order_index === currentOrderIndex);
-        const target = Math.min(
-          Math.max(newGroupPosition - 1, 0),
-          prev.length - 1
+        const groups = groupVariants(prev);
+        const currentGroupIdx = groups.findIndex((g) =>
+          g.variants.some((v) => v.order_index === currentOrderIndex)
         );
-        if (idx < 0 || target === idx) return prev;
-        const next = [...prev];
-        const [moved] = next.splice(idx, 1);
-        next.splice(target, 0, moved);
-        // Re-asignar order_index
-        return next.map((b, i) => ({ ...b, order_index: i }));
+        if (currentGroupIdx < 0) return prev;
+
+        const targetIdx = Math.min(
+          Math.max(newGroupPosition - 1, 0),
+          groups.length - 1
+        );
+        if (targetIdx === currentGroupIdx) return prev;
+
+        const reordered = [...groups];
+        const [moved] = reordered.splice(currentGroupIdx, 1);
+        reordered.splice(targetIdx, 0, moved);
+
+        // Aplanar y re-asignar order_index
+        const result: ExerciseBlockData[] = [];
+        reordered.forEach((group, gIdx) => {
+          group.variants.forEach((v) => {
+            result.push({ ...v, order_index: gIdx });
+          });
+        });
+        return result;
       });
     },
     []
   );
 
-  // En este editor no se soportan añadir variantes (el snapshot es fijo)
-  const handleAddVariant = useCallback((_orderIndex: number) => {
-    // no-op en el editor de snapshots de planning
-  }, []);
+  // ── Builder de bloque vacío (igual que RoutineEditor.buildEmptyBlock) ─────────
+  const buildEmptyBlock = useCallback(
+    (orderIndex: number, variantOrder: number, keyPrefix: string): ExerciseBlockData => {
+      const exerciseType: ExerciseType = "weight";
+      const config = getPresetVariablesConfig(exerciseType);
+      const defaultSetRaw = buildEmptySet(config);
+      const defaultSet: Record<string, string> = {};
+      for (const [k, v] of Object.entries(defaultSetRaw)) {
+        if (typeof v === "string") defaultSet[k] = v;
+      }
+      return {
+        _key: `${keyPrefix}-${Date.now()}-${Math.random()}`,
+        routine_exercise_id: null,
+        exercise_id: null,
+        name: "",
+        exercise_type: exerciseType,
+        is_warmup: false,
+        variables_config: config,
+        sets: [defaultSet as ExerciseBlockData["sets"][number]],
+        order_index: orderIndex,
+        variant_order: variantOrder,
+        superset_group: null,
+      };
+    },
+    []
+  );
+
+  /**
+   * Agrega una variante (suplente) vacía al grupo con el order_index dado.
+   * Espeja la implementación de RoutineEditor.handleAddVariant.
+   */
+  const handleAddVariant = useCallback(
+    (orderIndex: number) => {
+      setBlocks((prev) => {
+        const groups = groupVariants(prev);
+        const group = groups.find((g) =>
+          g.variants.some((v) => v.order_index === orderIndex)
+        );
+        const maxVariantOrder = group
+          ? Math.max(...group.variants.map((v) => v.variant_order)) + 1
+          : 1;
+        // Heredar superset_group del grupo existente para no romper el invariante:
+        // todas las variantes de un order_index deben compartir el mismo superset_group.
+        const inheritedSupersetGroup = group?.variants[0]?.superset_group ?? null;
+        const newBlock = buildEmptyBlock(orderIndex, maxVariantOrder, "new-variant");
+        return [...prev, { ...newBlock, superset_group: inheritedSupersetGroup }];
+      });
+    },
+    [buildEmptyBlock]
+  );
 
   // ─── Combine handlers ────────────────────────────────────────────────────────
 
@@ -304,10 +382,27 @@ export const WeekRoutineExercisesEditor: React.FC<
   /**
    * Confirma el combine: aplica combineIntoGroup y sale del modo combinar.
    * Requiere ≥2 seleccionados (validación en el botón y acá como guard).
+   *
+   * combineSelectedKeys guarda la primaryKey (primera variante) de cada grupo.
+   * Expandimos a todas las _keys de cada grupo antes de pasar a combineIntoGroup
+   * para que TODAS las variantes de un grupo queden en el mismo superset_group.
    */
   const handleConfirmCombine = useCallback(() => {
     if (combineSelectedKeys.size < 2) return;
-    setBlocks((prev) => combineIntoGroup(prev, combineSelectedKeys));
+    setBlocks((prev) => {
+      // Expandir primaryKeys → todas las _keys del grupo de variantes correspondiente
+      const groups = groupVariants(prev);
+      const expandedKeys = new Set<string>();
+      for (const primaryKey of combineSelectedKeys) {
+        const group = groups.find((g) => g.variants[0]?._key === primaryKey);
+        if (group) {
+          group.variants.forEach((v) => expandedKeys.add(v._key));
+        } else {
+          expandedKeys.add(primaryKey);
+        }
+      }
+      return combineIntoGroup(prev, expandedKeys);
+    });
     setCombineMode(false);
     setCombineSelectedKeys(new Set());
   }, [combineSelectedKeys]);
@@ -405,42 +500,44 @@ export const WeekRoutineExercisesEditor: React.FC<
     }
   };
 
-  // ─── Agrupamiento de supersets (desde blocks en estado, no weekRoutine.exercises) ─
+  // ─── Agrupamiento: variantes por order_index, luego supersets ────────────────
 
-  // Derivar el mapa de superset_group directamente desde el estado `blocks`
-  // para que refleje los cambios de combineIntoGroup/ungroupSuperset en memoria.
-  const blocksSupersetGroup = new Map<string, string>();
-  for (const block of blocks) {
-    if (block.superset_group) {
-      blocksSupersetGroup.set(block._key, block.superset_group);
-    }
-  }
-
-  // Suprimir warnings de groupBySupersetGroup (ya no se usa; se reemplazó por el mapa directo)
+  // Suprimir warnings de groupBySupersetGroup (ya no se usa; se reemplazó por groupVariants)
   void groupBySupersetGroup;
 
-  const renderedGroupIds = new Set<string>();
+  // Paso 1: agrupar por order_index (grupos de variantes).
+  // La función groupVariants ordena por order_index y luego por variant_order.
+  const variantGroupsForRender = groupVariants(blocks);
+
+  // Paso 2: construir el renderOrder considerando supersets.
+  // Un "grupo de variantes" (ExerciseBlock) puede ser parte de un superset_group UUID.
+  // El superset_group es uniforme dentro del grupo de variantes (todas las variantes
+  // de un order_index deben tener el mismo superset_group o ninguna).
+  const renderedSupersetIds = new Set<string>();
+
   const renderOrder: Array<
-    | { type: "block"; block: ExerciseBlockData; index: number }
-    | { type: "superset"; groupId: string; memberBlocks: ExerciseBlockData[] }
+    | { type: "variantGroup"; variantGroup: typeof variantGroupsForRender[number] }
+    | { type: "superset"; groupId: string; memberVariantGroups: typeof variantGroupsForRender }
   > = [];
 
-  let globalBlockIndex = 0;
-  for (const block of blocks) {
-    const sg = blocksSupersetGroup.get(block._key);
+  for (const vg of variantGroupsForRender) {
+    // Tomar el superset_group de la primera variante (todas comparten el mismo)
+    const sg = vg.variants[0]?.superset_group ?? null;
     if (sg) {
-      if (!renderedGroupIds.has(sg)) {
-        renderedGroupIds.add(sg);
-        const memberBlocks = blocks.filter(
-          (b) => blocksSupersetGroup.get(b._key) === sg
+      if (!renderedSupersetIds.has(sg)) {
+        renderedSupersetIds.add(sg);
+        // Recopilar todos los grupos de variantes que pertenecen a este superset_group
+        const memberVariantGroups = variantGroupsForRender.filter(
+          (g) => g.variants[0]?.superset_group === sg
         );
-        renderOrder.push({ type: "superset", groupId: sg, memberBlocks });
+        renderOrder.push({ type: "superset", groupId: sg, memberVariantGroups });
       }
     } else {
-      renderOrder.push({ type: "block", block, index: globalBlockIndex });
+      renderOrder.push({ type: "variantGroup", variantGroup: vg });
     }
-    globalBlockIndex++;
   }
+
+  const totalVisualGroups = renderOrder.length;
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -455,8 +552,6 @@ export const WeekRoutineExercisesEditor: React.FC<
   }
 
   let displayIndex = 0;
-  // Total de grupos visuales (para el OrderBadge)
-  const totalVisualGroups = renderOrder.length;
 
   return (
     <div className="flex flex-col gap-md">
@@ -588,26 +683,28 @@ export const WeekRoutineExercisesEditor: React.FC<
         </p>
       )}
 
-      {/* Lista de ejercicios */}
+      {/* Lista de ejercicios — agrupados por order_index (variantes) y superset_group */}
       <div className="flex flex-col gap-sm">
         {renderOrder.map((item) => {
           if (item.type === "superset") {
             const groupStartIndex = displayIndex;
-            displayIndex += item.memberBlocks.length;
+            displayIndex += item.memberVariantGroups.length;
             return (
               <SupersetGroupSection
                 key={`sg-${item.groupId}`}
-                memberCount={item.memberBlocks.length}
+                memberCount={item.memberVariantGroups.length}
                 combineMode={combineMode}
                 readOnly={readOnly}
                 onUngroup={!readOnly ? () => handleUngroupSuperset(item.groupId) : undefined}
               >
-                {item.memberBlocks.map((block, memberIdx) => {
+                {item.memberVariantGroups.map((vg, memberIdx) => {
                   const gIdx = groupStartIndex + memberIdx;
+                  // Para combine mode, la selección usa la _key de la primera variante
+                  const primaryKey = vg.variants[0]?._key ?? vg.groupKey;
                   return (
                     <ExerciseBlock
-                      key={block._key}
-                      variants={[block]}
+                      key={vg.groupKey}
+                      variants={vg.variants}
                       groupIndex={gIdx}
                       totalGroups={totalVisualGroups}
                       readOnly={readOnly || combineMode}
@@ -617,11 +714,18 @@ export const WeekRoutineExercisesEditor: React.FC<
                       onReorderGroup={handleReorderGroup}
                       onAddVariant={handleAddVariant}
                       onRemoveFromGroup={
-                        !readOnly ? () => handleRemoveFromGroup(block._key) : undefined
+                        !readOnly
+                          ? () => {
+                              // Sacar todas las variantes del grupo del superset
+                              for (const v of vg.variants) {
+                                handleRemoveFromGroup(v._key);
+                              }
+                            }
+                          : undefined
                       }
                       combineMode={combineMode}
-                      combineSelected={combineSelectedKeys.has(block._key)}
-                      onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
+                      combineSelected={combineSelectedKeys.has(primaryKey)}
+                      onToggleCombineSelect={() => handleToggleCombineSelect(primaryKey)}
                     />
                   );
                 })}
@@ -629,10 +733,12 @@ export const WeekRoutineExercisesEditor: React.FC<
             );
           } else {
             const idx = displayIndex++;
+            const vg = item.variantGroup;
+            const primaryKey = vg.variants[0]?._key ?? vg.groupKey;
             return (
               <ExerciseBlock
-                key={item.block._key}
-                variants={[item.block]}
+                key={vg.groupKey}
+                variants={vg.variants}
                 groupIndex={idx}
                 totalGroups={totalVisualGroups}
                 readOnly={readOnly || combineMode}
@@ -641,10 +747,10 @@ export const WeekRoutineExercisesEditor: React.FC<
                 onRemove={handleRemove}
                 onReorderGroup={handleReorderGroup}
                 onAddVariant={handleAddVariant}
-                onStartCombine={!readOnly ? () => handleStartCombine(item.block._key) : undefined}
+                onStartCombine={!readOnly ? () => handleStartCombine(primaryKey) : undefined}
                 combineMode={combineMode}
-                combineSelected={combineSelectedKeys.has(item.block._key)}
-                onToggleCombineSelect={() => handleToggleCombineSelect(item.block._key)}
+                combineSelected={combineSelectedKeys.has(primaryKey)}
+                onToggleCombineSelect={() => handleToggleCombineSelect(primaryKey)}
               />
             );
           }

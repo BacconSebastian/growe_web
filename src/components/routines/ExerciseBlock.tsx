@@ -14,6 +14,7 @@ import {
   Link2,
   Unlink2,
 } from "lucide-react";
+import { SupersetGroupSection } from "./SupersetGroupSection";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { GradientSurface } from "@/components/ui/GradientSurface";
@@ -107,6 +108,11 @@ interface ExerciseBlockProps {
   onReorderGroup: (orderIndex: number, newGroupPosition: number) => void;
   /** Callback para agregar suplente — crea una variante sin nombre en el grupo */
   onAddVariant: (orderIndex: number) => void;
+  /**
+   * Si false, el botón "Añadir suplente" queda oculto (ej. editor de snapshots
+   * de planning donde mobile no soporta agregar variantes nuevas). Default: true.
+   */
+  allowAddVariant?: boolean;
   /**
    * Estado inicial de expansión. Si se omite, se auto-expande solo el primer
    * grupo con nombre (comportamiento del editor de rutinas).
@@ -213,6 +219,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   onRemove,
   onReorderGroup,
   onAddVariant,
+  allowAddVariant = true,
   onStartCombine,
   onRemoveFromGroup,
   combineMode = false,
@@ -227,6 +234,11 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   );
   const [activeVariantIdx, setActiveVariantIdx] = useState(0);
   const [showVarsModal, setShowVarsModal] = useState(false);
+  /**
+   * _key de la variante para la cual se abrió el modal de variables en modo colapsado.
+   * null = se usa la variante activa (safeIdx), como en el render expandido.
+   */
+  const [varsModalVariantKey, setVarsModalVariantKey] = useState<string | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [showRemoveVariantConfirm, setShowRemoveVariantConfirm] = useState(false);
   /** Key de la variante pendiente de borrar — se resuelve en el onClick, no en el onConfirm. */
@@ -370,31 +382,36 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   const config = resolveVariablesConfig(data.variables_config, data.exercise_type);
   const hasMultipleVariants = variants.length > 1;
 
-  // ─── Resumen colapsado ──────────────────────────────────────────────────────
+  // ─── Helper: resumen de series para una variante (reutilizable por card) ────
 
-  const setCount = data.sets.length;
-  const summaryParts: string[] = [
-    `${setCount} ${setCount === 1 ? "serie" : "series"}`,
-  ];
-
-  if (config.variables.find((v) => v.key === "reps")) {
-    const repsVals = data.sets
-      .map((s) => Number(s.reps))
-      .filter((n) => !isNaN(n) && n > 0);
-    if (repsVals.length > 0) {
-      const minReps = Math.min(...repsVals);
-      const maxReps = Math.max(...repsVals);
-      summaryParts.push(
-        minReps === maxReps ? `${minReps} reps` : `${minReps}-${maxReps} reps`
-      );
+  const buildVariantSummary = (v: ExerciseBlockData): string => {
+    const vConfig = resolveVariablesConfig(v.variables_config, v.exercise_type);
+    const parts: string[] = [
+      `${v.sets.length} ${v.sets.length === 1 ? "serie" : "series"}`,
+    ];
+    if (vConfig.variables.find((vr) => vr.key === "reps")) {
+      const repsVals = v.sets
+        .map((s) => Number(s.reps))
+        .filter((n) => !isNaN(n) && n > 0);
+      if (repsVals.length > 0) {
+        const minReps = Math.min(...repsVals);
+        const maxReps = Math.max(...repsVals);
+        parts.push(
+          minReps === maxReps ? `${minReps} reps` : `${minReps}-${maxReps} reps`
+        );
+      }
     }
-  }
-  const restTimes = data.sets
-    .map((s) => Number(s.rest_time))
-    .filter((n) => !isNaN(n) && n > 0);
-  if (restTimes.length > 0) {
-    summaryParts.push(`${Math.round(restTimes[0])}s descanso`);
-  }
+    const restTimes = v.sets
+      .map((s) => Number(s.rest_time))
+      .filter((n) => !isNaN(n) && n > 0);
+    if (restTimes.length > 0) {
+      parts.push(`${Math.round(restTimes[0])}s descanso`);
+    }
+    return parts.join(" · ");
+  };
+
+  // Resumen colapsado para la variante activa (single-variant o fallback en expandido)
+  const summaryParts = buildVariantSummary(data).split(" · ");
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -427,141 +444,325 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   };
 
   const handleSaveVarsConfig = (newConfig: VariablesConfig) => {
-    const newSets = data.sets.map((set) => {
-      const routineSet = editableToRoutineSet(set, config);
+    // Si el modal se abrió para una variante específica (desde el render colapsado),
+    // actualizar esa variante; de lo contrario, actualizar la variante activa.
+    const targetVariant =
+      varsModalVariantKey !== null
+        ? (variants.find((v) => v._key === varsModalVariantKey) ?? data)
+        : data;
+    const targetConfig = resolveVariablesConfig(
+      targetVariant.variables_config,
+      targetVariant.exercise_type
+    );
+    const newSets = targetVariant.sets.map((set) => {
+      const routineSet = editableToRoutineSet(set, targetConfig);
       return routineSetToEditable(routineSet, newConfig);
     });
-    onUpdate(data._key, { variables_config: newConfig, sets: newSets });
+    onUpdate(targetVariant._key, { variables_config: newConfig, sets: newSets });
+    setVarsModalVariantKey(null);
   };
 
   // ─── Render colapsado ───────────────────────────────────────────────────────
 
   if (!expanded) {
-    return (
-      <>
-        <GradientSurface>
-          <div className="w-full flex items-center gap-md px-xl py-md text-left">
-            <OrderBadge
-              groupIndex={groupIndex}
-              totalGroups={totalGroups}
-              readOnly={readOnly}
-              onReorder={(pos) => onReorderGroup(data.order_index, pos)}
-            />
+    // La variante activa para el modal de variables (null → usa la activa del render expandido)
+    const varsModalConfig =
+      varsModalVariantKey !== null
+        ? resolveVariablesConfig(
+            variants.find((v) => v._key === varsModalVariantKey)?.variables_config ??
+              data.variables_config,
+            variants.find((v) => v._key === varsModalVariantKey)?.exercise_type ??
+              data.exercise_type
+          )
+        : config;
 
-            {isNaming ? (
-              /* Buscador inline en la card contraída (compacto, sin detalle) */
-              <ExerciseNameSearch
-                onSelect={(name, exId) => selectExerciseName(data._key, name, exId)}
-                onCancel={() => cancelNaming(data._key)}
+    // ── Card única para ejercicios sin variantes adicionales ──────────────────
+    if (!hasMultipleVariants) {
+      return (
+        <>
+          <GradientSurface>
+            <div className="w-full flex items-center gap-md px-xl py-md text-left">
+              <OrderBadge
+                groupIndex={groupIndex}
+                totalGroups={totalGroups}
+                readOnly={readOnly}
+                onReorder={(pos) => onReorderGroup(data.order_index, pos)}
               />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="flex-1 flex flex-col min-w-0 text-left hover:opacity-80 transition-opacity"
-              >
-                <div className="flex items-center gap-sm flex-wrap">
-                  <span
-                    className={[
-                      "text-base truncate",
-                      data.name
-                        ? "font-semibold text-fg"
-                        : "font-medium italic text-fg-tertiary",
-                    ].join(" ")}
-                  >
-                    {data.name || "Elegir ejercicio"}
-                  </span>
-                  {data.is_warmup && (
-                    <Badge variant="warning" size="sm">
-                      Calentamiento
-                    </Badge>
-                  )}
-                  {hasMultipleVariants && (
-                    <Badge variant="primary" size="sm">
-                      {variants.length - 1}{" "}
-                      {variants.length - 1 === 1 ? "variante" : "variantes"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-fg-tertiary m-0 mt-xxs">
-                  {summaryParts.join(" · ")}
-                </p>
-              </button>
-            )}
 
-            {/* Acciones — siempre visibles, a la derecha */}
-            <div className="flex items-center gap-xs flex-shrink-0">
-              {!readOnly && (
-                <IconButton
-                  title="Cambiar ejercicio"
-                  onClick={() => openNaming(data._key)}
-                  iconColor="var(--primary)"
-                  bg="var(--primary-alpha-12)"
-                >
-                  <Pencil size={15} />
-                </IconButton>
-              )}
-              {/* Combinar (ámbar) si no está combinado; descombinar (rojo) si lo está */}
-              {!readOnly && isCombined && onRemoveFromGroup ? (
-                <IconButton
-                  title="Sacar de la combinación"
-                  onClick={onRemoveFromGroup}
-                  iconColor="var(--destructive)"
-                  bg="var(--destructive-alpha-12)"
-                >
-                  <Unlink2 size={15} />
-                </IconButton>
+              {isNaming ? (
+                /* Buscador inline en la card contraída (compacto, sin detalle) */
+                <ExerciseNameSearch
+                  onSelect={(name, exId) => selectExerciseName(data._key, name, exId)}
+                  onCancel={() => cancelNaming(data._key)}
+                />
               ) : (
-                !readOnly &&
-                onStartCombine && (
-                  <IconButton
-                    title="Combinar ejercicios (superset)"
-                    onClick={onStartCombine}
-                    iconColor="var(--warning)"
-                    bg="var(--warning-alpha-20)"
-                  >
-                    <Link2 size={15} />
-                  </IconButton>
-                )
-              )}
-              {/* Personalizar variables */}
-              <IconButton
-                title="Personalizar variables"
-                onClick={() => setShowVarsModal(true)}
-                disabled={readOnly}
-              >
-                <Settings2 size={15} />
-              </IconButton>
-              {!readOnly && (
                 <button
                   type="button"
-                  title="Eliminar ejercicio"
-                  aria-label="Eliminar ejercicio"
-                  onClick={() => setShowRemoveConfirm(true)}
-                  className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80"
-                  style={{
-                    background: "var(--destructive-alpha-12)",
-                    color: "var(--destructive)",
-                  }}
+                  onClick={() => setExpanded(true)}
+                  className="flex-1 flex flex-col min-w-0 text-left hover:opacity-80 transition-opacity"
                 >
-                  <Trash2 size={15} />
+                  <div className="flex items-center gap-sm flex-wrap">
+                    <span
+                      className={[
+                        "text-base truncate",
+                        data.name
+                          ? "font-semibold text-fg"
+                          : "font-medium italic text-fg-tertiary",
+                      ].join(" ")}
+                    >
+                      {data.name || "Elegir ejercicio"}
+                    </span>
+                    {data.is_warmup && (
+                      <Badge variant="warning" size="sm">
+                        Calentamiento
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-fg-tertiary m-0 mt-xxs">
+                    {summaryParts.join(" · ")}
+                  </p>
                 </button>
               )}
+
+              {/* Acciones — siempre visibles, a la derecha */}
+              <div className="flex items-center gap-xs flex-shrink-0">
+                {!readOnly && (
+                  <IconButton
+                    title="Cambiar ejercicio"
+                    onClick={() => openNaming(data._key)}
+                    iconColor="var(--primary)"
+                    bg="var(--primary-alpha-12)"
+                  >
+                    <Pencil size={15} />
+                  </IconButton>
+                )}
+                {/* Combinar (ámbar) si no está combinado; descombinar (rojo) si lo está */}
+                {!readOnly && isCombined && onRemoveFromGroup ? (
+                  <IconButton
+                    title="Sacar de la combinación"
+                    onClick={onRemoveFromGroup}
+                    iconColor="var(--destructive)"
+                    bg="var(--destructive-alpha-12)"
+                  >
+                    <Unlink2 size={15} />
+                  </IconButton>
+                ) : (
+                  !readOnly &&
+                  onStartCombine && (
+                    <IconButton
+                      title="Combinar ejercicios (superset)"
+                      onClick={onStartCombine}
+                      iconColor="var(--warning)"
+                      bg="var(--warning-alpha-20)"
+                    >
+                      <Link2 size={15} />
+                    </IconButton>
+                  )
+                )}
+                {/* Personalizar variables */}
+                <IconButton
+                  title="Personalizar variables"
+                  onClick={() => setShowVarsModal(true)}
+                  disabled={readOnly}
+                >
+                  <Settings2 size={15} />
+                </IconButton>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    title="Eliminar ejercicio"
+                    aria-label="Eliminar ejercicio"
+                    onClick={() => setShowRemoveConfirm(true)}
+                    className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80"
+                    style={{
+                      background: "var(--destructive-alpha-12)",
+                      color: "var(--destructive)",
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </GradientSurface>
+          </GradientSurface>
+
+          <VariablesConfigModal
+            open={showVarsModal}
+            onClose={() => { setShowVarsModal(false); setVarsModalVariantKey(null); }}
+            currentConfig={varsModalConfig}
+            onSave={handleSaveVarsConfig}
+          />
+
+          <ConfirmDialog
+            open={showRemoveConfirm}
+            title="Eliminar ejercicio"
+            description={`¿Quitar "${data.name}" de la rutina? Esta acción se aplica al guardar.`}
+            confirmLabel="Eliminar"
+            confirmVariant="danger"
+            onConfirm={() => {
+              setShowRemoveConfirm(false);
+              for (const v of variants) {
+                onRemove(v._key);
+              }
+            }}
+            onClose={() => setShowRemoveConfirm(false)}
+          />
+        </>
+      );
+    }
+
+    // ── Grupo de variantes contraídas: una card por variante, envuelta en el chip azul ──
+
+    // El buscador inline se determina por namingKey global (ya considera el _key).
+    // namingKey puede apuntar a cualquier variante.
+
+    return (
+      <>
+        <SupersetGroupSection variant="variants" memberCount={variants.length}>
+          {variants.map((v, vIdx) => {
+            const isFirst = vIdx === 0;
+            const variantName =
+              v.name || (vIdx === 0 ? "Principal" : `Suplente ${vIdx}`);
+            const isNamingThisVariant = !readOnly && namingKey === v._key;
+            const vSummary = buildVariantSummary(v);
+
+            return (
+              <GradientSurface key={v._key}>
+                <div className="w-full flex items-center gap-md px-xl py-md text-left">
+                  {/* OrderBadge en todas las variantes — comparten order_index,
+                      editar cualquiera reordena el grupo completo (mismo handler). */}
+                  <OrderBadge
+                    groupIndex={groupIndex}
+                    totalGroups={totalGroups}
+                    readOnly={readOnly}
+                    onReorder={(pos) => onReorderGroup(data.order_index, pos)}
+                  />
+
+                  {isNamingThisVariant ? (
+                    <ExerciseNameSearch
+                      onSelect={(name, exId) => selectExerciseName(v._key, name, exId)}
+                      onCancel={() => cancelNaming(v._key)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveVariantIdx(vIdx);
+                        setExpanded(true);
+                      }}
+                      className="flex-1 flex flex-col min-w-0 text-left hover:opacity-80 transition-opacity"
+                    >
+                      <div className="flex items-center gap-sm flex-wrap">
+                        <span
+                          className={[
+                            "text-base truncate",
+                            v.name
+                              ? "font-semibold text-fg"
+                              : "font-medium italic text-fg-tertiary",
+                          ].join(" ")}
+                        >
+                          {variantName}
+                        </span>
+                        {v.is_warmup && (
+                          <Badge variant="warning" size="sm">
+                            Calentamiento
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-fg-tertiary m-0 mt-xxs">
+                        {vSummary}
+                      </p>
+                    </button>
+                  )}
+
+                  {/* Acciones por variante */}
+                  <div className="flex items-center gap-xs flex-shrink-0">
+                    {/* Lápiz: renombrar esta variante */}
+                    {!readOnly && (
+                      <IconButton
+                        title="Cambiar ejercicio"
+                        onClick={() => openNaming(v._key)}
+                        iconColor="var(--primary)"
+                        bg="var(--primary-alpha-12)"
+                      >
+                        <Pencil size={15} />
+                      </IconButton>
+                    )}
+
+                    {/* Combinar/descombinar — solo en la primera card (nivel de grupo) */}
+                    {isFirst && !readOnly && isCombined && onRemoveFromGroup ? (
+                      <IconButton
+                        title="Sacar de la combinación"
+                        onClick={onRemoveFromGroup}
+                        iconColor="var(--destructive)"
+                        bg="var(--destructive-alpha-12)"
+                      >
+                        <Unlink2 size={15} />
+                      </IconButton>
+                    ) : isFirst && !readOnly && onStartCombine ? (
+                      <IconButton
+                        title="Combinar ejercicios (superset)"
+                        onClick={onStartCombine}
+                        iconColor="var(--warning)"
+                        bg="var(--warning-alpha-20)"
+                      >
+                        <Link2 size={15} />
+                      </IconButton>
+                    ) : null}
+
+                    {/* Variables: abre modal para esta variante específica */}
+                    <IconButton
+                      title="Personalizar variables"
+                      onClick={() => {
+                        setVarsModalVariantKey(v._key);
+                        setShowVarsModal(true);
+                      }}
+                      disabled={readOnly}
+                    >
+                      <Settings2 size={15} />
+                    </IconButton>
+
+                    {/* Eliminar: suplente → quitar variante; principal → quitar grupo completo */}
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        title={vIdx > 0 ? "Quitar suplente" : "Eliminar ejercicio"}
+                        aria-label={vIdx > 0 ? "Quitar suplente" : "Eliminar ejercicio"}
+                        onClick={() => {
+                          if (vIdx > 0) {
+                            setPendingRemoveVariantKey(v._key);
+                            setShowRemoveVariantConfirm(true);
+                          } else {
+                            setShowRemoveConfirm(true);
+                          }
+                        }}
+                        className="w-8 h-8 flex items-center justify-center rounded-pill transition-opacity hover:opacity-80"
+                        style={{
+                          background: "var(--destructive-alpha-12)",
+                          color: "var(--destructive)",
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </GradientSurface>
+            );
+          })}
+        </SupersetGroupSection>
 
         <VariablesConfigModal
           open={showVarsModal}
-          onClose={() => setShowVarsModal(false)}
-          currentConfig={config}
+          onClose={() => { setShowVarsModal(false); setVarsModalVariantKey(null); }}
+          currentConfig={varsModalConfig}
           onSave={handleSaveVarsConfig}
         />
 
         <ConfirmDialog
           open={showRemoveConfirm}
           title="Eliminar ejercicio"
-          description={`¿Quitar "${data.name}" de la rutina? Esta acción se aplica al guardar.`}
+          description={`¿Quitar "${data.name || "este ejercicio"}" de la rutina? Esta acción elimina todas las variantes y se aplica al guardar.`}
           confirmLabel="Eliminar"
           confirmVariant="danger"
           onConfirm={() => {
@@ -571,6 +772,25 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
             }
           }}
           onClose={() => setShowRemoveConfirm(false)}
+        />
+
+        <ConfirmDialog
+          open={showRemoveVariantConfirm}
+          title="Quitar suplente"
+          description="¿Quitar esta variante del grupo?"
+          confirmLabel="Quitar"
+          confirmVariant="danger"
+          onConfirm={() => {
+            setShowRemoveVariantConfirm(false);
+            if (pendingRemoveVariantKey !== null) {
+              onRemove(pendingRemoveVariantKey);
+              setPendingRemoveVariantKey(null);
+            }
+          }}
+          onClose={() => {
+            setShowRemoveVariantConfirm(false);
+            setPendingRemoveVariantKey(null);
+          }}
         />
       </>
     );
@@ -760,8 +980,9 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
               Ver galería
             </button>
 
-            {/* Añadir suplente — solo si no readOnly */}
-            {!readOnly && (
+            {/* Añadir suplente — solo si no readOnly y allowAddVariant (mobile no
+                soporta agregar variantes en snapshots de planning → false ahí). */}
+            {!readOnly && allowAddVariant && (
               <button
                 type="button"
                 onClick={() => {
@@ -855,7 +1076,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
 
       <VariablesConfigModal
         open={showVarsModal}
-        onClose={() => setShowVarsModal(false)}
+        onClose={() => { setShowVarsModal(false); setVarsModalVariantKey(null); }}
         currentConfig={config}
         onSave={handleSaveVarsConfig}
       />

@@ -368,7 +368,11 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
         const groups = groupVariants(prev);
         const group = groups.find((g) => g.variants.some((v) => v.order_index === orderIndex));
         const maxVariantOrder = group ? Math.max(...group.variants.map((v) => v.variant_order)) + 1 : 1;
-        return [...prev, buildEmptyBlock(orderIndex, maxVariantOrder, "new-variant")];
+        // Heredar superset_group del grupo existente para no romper el invariante:
+        // todas las variantes de un order_index deben compartir el mismo superset_group.
+        const inheritedSupersetGroup = group?.variants[0]?.superset_group ?? null;
+        const newBlock = buildEmptyBlock(orderIndex, maxVariantOrder, "new-variant");
+        return [...prev, { ...newBlock, superset_group: inheritedSupersetGroup }];
       });
     },
     [buildEmptyBlock],

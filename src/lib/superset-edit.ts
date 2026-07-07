@@ -16,7 +16,8 @@
  * @module lib/superset-edit
  */
 
-import type { ExerciseBlockData } from "@/components/routines/ExerciseBlock";
+import type { ExerciseBlockData, ExerciseGroup } from "@/components/routines/ExerciseBlock";
+import { groupVariants } from "@/components/routines/ExerciseBlock";
 
 // ─── combineIntoGroup ──────────────────────────────────────────────────────────
 
@@ -156,6 +157,151 @@ export function removeFromSupersetGroup(
     if (b._key === key) return { ...b, superset_group: null };
     if (dissolve && b.superset_group === groupId)
       return { ...b, superset_group: null };
+    return { ...b };
+  });
+}
+
+// ─── combineGroupsIntoSuperset ────────────────────────────────────────────────
+
+/**
+ * Combina los grupos de variantes cuyos `order_index` estén en
+ * `selectedOrderIndexes` en un único grupo de superset, y los reordena para
+ * que queden contiguos (insertados en la posición del primer grupo seleccionado,
+ * preservando su orden relativo entre sí y entre los no seleccionados).
+ *
+ * Difiere de `combineIntoGroup` en que opera a nivel de **grupos de variantes**
+ * (todos los bloques que comparten un `order_index` forman un grupo), mientras
+ * que `combineIntoGroup` opera sobre `_key` individuales. Usar esta función en
+ * RoutineEditor donde la selección es por `order_index`.
+ *
+ * Semántica:
+ * - Asigna un UUID v4 nuevo a todos los bloques de los grupos seleccionados.
+ * - Si un grupo seleccionado pertenecía a otro superset y ese superset queda
+ *   con <2 grupos-de-variantes miembros, se disuelve por completo.
+ * - Si `selectedOrderIndexes` tiene <2 entradas, los grupos tocados se disuelven.
+ * - `order_index` y `variant_order` se reasignan secuencialmente al final.
+ *
+ * @param blocks                Array de bloques. No se muta.
+ * @param selectedOrderIndexes  Set (o array) de `order_index` de los grupos a combinar.
+ * @returns Nueva copia del array con los cambios aplicados.
+ */
+export function combineGroupsIntoSuperset(
+  blocks: ExerciseBlockData[],
+  selectedOrderIndexes: number[] | Set<number>,
+): ExerciseBlockData[] {
+  const selectedSet = new Set(selectedOrderIndexes);
+
+  const groups = groupVariants(blocks);
+
+  // Si <2 grupos seleccionados → disolver los grupos tocados
+  if (selectedSet.size < 2) {
+    return blocks.map((b) =>
+      selectedSet.has(b.order_index) ? { ...b, superset_group: null } : b,
+    );
+  }
+
+  const newGroupId: string = crypto.randomUUID();
+
+  // Calcular qué supersets viejos quedan con <2 grupos-de-variantes y hay que disolver
+  const oldGroupIds = new Set<string>();
+  for (const b of blocks) {
+    if (selectedSet.has(b.order_index) && b.superset_group != null) {
+      oldGroupIds.add(b.superset_group);
+    }
+  }
+
+  const groupsToDissolve = new Set<string>();
+  for (const gid of oldGroupIds) {
+    // Contar cuántos grupos-de-variantes del superset NO están seleccionados
+    const survivingGroupOrderIndexes = new Set<number>();
+    for (const b of blocks) {
+      if (b.superset_group === gid && !selectedSet.has(b.order_index)) {
+        survivingGroupOrderIndexes.add(b.order_index);
+      }
+    }
+    if (survivingGroupOrderIndexes.size < 2) groupsToDissolve.add(gid);
+  }
+
+  // Separar grupos seleccionados / no seleccionados (a nivel de ExerciseGroup)
+  const selectedGroups: ExerciseGroup[] = [];
+  const remainingGroups: ExerciseGroup[] = [];
+  let insertionIdx = -1;
+
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    const oi = g.variants[0]?.order_index;
+    if (oi !== undefined && selectedSet.has(oi)) {
+      if (insertionIdx < 0) insertionIdx = remainingGroups.length;
+      selectedGroups.push(g);
+    } else {
+      remainingGroups.push(g);
+    }
+  }
+
+  if (insertionIdx < 0) insertionIdx = remainingGroups.length;
+
+  // Recomponer: no-seleccionados con el cluster en la posición insertionIdx
+  const reordered: ExerciseGroup[] = [
+    ...remainingGroups.slice(0, insertionIdx),
+    ...selectedGroups,
+    ...remainingGroups.slice(insertionIdx),
+  ];
+
+  // Aplanar reasignando order_index secuencial, variant_order y superset_group
+  const result: ExerciseBlockData[] = [];
+  reordered.forEach((group, gIdx) => {
+    const oi = group.variants[0]?.order_index;
+    const isSelected = oi !== undefined && selectedSet.has(oi);
+    group.variants.forEach((v, vIdx) => {
+      let sg: string | null = v.superset_group;
+      if (isSelected) {
+        sg = newGroupId;
+      } else if (sg != null && groupsToDissolve.has(sg)) {
+        sg = null;
+      }
+      result.push({ ...v, order_index: gIdx, variant_order: vIdx, superset_group: sg });
+    });
+  });
+
+  return result;
+}
+
+// ─── removeGroupFromSuperset ──────────────────────────────────────────────────
+
+/**
+ * Saca todas las variantes del grupo identificado por `orderIndex` de su grupo
+ * de superset. Si tras quitarlo el superset queda con <2 grupos-de-variantes,
+ * se disuelve el superset completo (todos sus miembros quedan `superset_group = null`).
+ *
+ * Análogo a `removeFromSupersetGroup` pero opera a nivel de grupo-de-variantes
+ * (todos los bloques con el mismo `order_index`) en lugar de un `_key` individual.
+ *
+ * @param blocks      Array de bloques. No se muta.
+ * @param orderIndex  `order_index` del grupo a sacar del superset.
+ * @returns Nueva copia del array con el grupo (y, si corresponde, el superset) desagrupado.
+ */
+export function removeGroupFromSuperset(
+  blocks: ExerciseBlockData[],
+  orderIndex: number,
+): ExerciseBlockData[] {
+  // Obtener el superset_group del grupo objetivo
+  const target = blocks.find((b) => b.order_index === orderIndex);
+  const groupId = target?.superset_group;
+  if (!groupId) return blocks.map((b) => ({ ...b }));
+
+  // Grupos-de-variantes que quedarían en el superset tras sacar el objetivo
+  const survivingGroupOrderIndexes = new Set<number>();
+  for (const b of blocks) {
+    if (b.superset_group === groupId && b.order_index !== orderIndex) {
+      survivingGroupOrderIndexes.add(b.order_index);
+    }
+  }
+
+  const dissolve = survivingGroupOrderIndexes.size < 2;
+
+  return blocks.map((b) => {
+    if (b.order_index === orderIndex) return { ...b, superset_group: null };
+    if (dissolve && b.superset_group === groupId) return { ...b, superset_group: null };
     return { ...b };
   });
 }

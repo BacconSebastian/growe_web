@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown, Link2 } from "lucide-react";
+import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,9 +14,9 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SkeletonBox } from "@/components/ui/Skeleton";
 
-import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants, ExerciseGroup } from "./ExerciseBlock";
+import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants } from "./ExerciseBlock";
 import { editableToRoutineSet } from "./SetsTable";
-import { SupersetGroupBorder } from "./SupersetGroupBorder";
+import { SupersetGroupSection } from "./SupersetGroupSection";
 import { AssignRoutineModal } from "@/components/coaching/AssignRoutineModal";
 
 import { getRoutine, createRoutine, updateRoutine, deleteRoutine } from "@/lib/api/routines";
@@ -24,6 +24,7 @@ import { getStudentRoutine, updateStudentRoutine } from "@/lib/api/coaching";
 import { getErrorMessage } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveVariablesConfig, getPresetVariablesConfig, buildEmptySet } from "@/lib/exercise-presets";
+import { combineGroupsIntoSuperset, ungroupSuperset, removeGroupFromSuperset } from "@/lib/superset-edit";
 import type { Routine, DayOfWeek, ExerciseType, RoutineExerciseSet, VariablesConfig } from "@/lib/api/types";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -89,18 +90,51 @@ interface RoutinePayload {
 }
 
 /**
+ * Garantiza que los grupos-de-variantes que comparten un superset_group queden
+ * contiguos en el array de grupos (misma semántica que normalizeGroupContiguity
+ * en WeekRoutineExercisesEditor pero operando sobre ExerciseGroup[]).
+ */
+function normalizeGroupContiguity(groups: ReturnType<typeof groupVariants>): ReturnType<typeof groupVariants> {
+  const emitted = new Set<string>(); // groupKey ya emitidos
+  const sgEmitted = new Set<string>(); // superset_group ya emitidos
+  const result: ReturnType<typeof groupVariants> = [];
+
+  for (const group of groups) {
+    if (emitted.has(group.groupKey)) continue;
+    const sg = group.variants[0]?.superset_group ?? null;
+    if (sg && !sgEmitted.has(sg)) {
+      sgEmitted.add(sg);
+      const members = groups.filter(
+        (g) => (g.variants[0]?.superset_group ?? null) === sg
+      );
+      for (const m of members) {
+        result.push(m);
+        emitted.add(m.groupKey);
+      }
+    } else if (!sg) {
+      result.push(group);
+      emitted.add(group.groupKey);
+    }
+    // Si ya fue emitido como parte de un superset anterior → saltar
+  }
+
+  return result;
+}
+
+/**
  * buildRoutinePayload — construye el payload para el backend.
  *
- * Agrupa los bloques por order_index (grupos de variantes), asigna
- * order_index secuencial 0,1,2… por grupo y variant_order 0,1,2… dentro del
- * grupo (por posición ordenada de variant_order actual).
+ * Agrupa los bloques por order_index (grupos de variantes), normaliza contigüidad
+ * de supersets, luego asigna order_index secuencial 0,1,2… por grupo y
+ * variant_order 0,1,2… dentro del grupo.
  */
 function buildRoutinePayload(
   values: FormValues,
   selectedDays: DayOfWeek[],
   blocks: ExerciseBlockData[],
 ): RoutinePayload {
-  const groups = groupVariants(blocks);
+  const rawGroups = groupVariants(blocks);
+  const groups = normalizeGroupContiguity(rawGroups);
 
   const exercises: RoutinePayload["exercises"] = [];
 
@@ -364,79 +398,27 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
   }, []);
 
   /**
-   * Guarda la combinación: asigna un UUID compartido a todos los bloques
-   * de los grupos seleccionados, y reordena para que los grupos seleccionados
-   * queden contiguos (en la posición del primer seleccionado, preservando
-   * su orden relativo).
+   * Confirma la combinación usando el helper canónico de superset-edit.ts.
    */
   const handleSaveCombine = useCallback(() => {
     if (combineMode.selected.length < 2) return;
-
-    const uuid = crypto.randomUUID();
-    const selectedSet = new Set(combineMode.selected);
-
-    setBlocks((prev) => {
-      const groups = groupVariants(prev);
-
-      // Separar grupos seleccionados y no seleccionados, preservando orden relativo
-      const selectedGroups: ExerciseGroup[] = [];
-      const remainingGroups: ExerciseGroup[] = [];
-      let insertionIdx = -1;
-
-      // El cluster se inserta en la posición del primer grupo seleccionado
-      // (medida por su posición actual en la lista de grupos, no su order_index)
-      for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        const oi = g.variants[0]?.order_index;
-        if (oi !== undefined && selectedSet.has(oi)) {
-          if (insertionIdx < 0) insertionIdx = remainingGroups.length;
-          selectedGroups.push(g);
-        } else {
-          remainingGroups.push(g);
-        }
-      }
-
-      if (insertionIdx < 0) insertionIdx = remainingGroups.length;
-
-      // Recomponer: no-seleccionados con el cluster en la posición insertionIdx
-      const reordered: ExerciseGroup[] = [
-        ...remainingGroups.slice(0, insertionIdx),
-        ...selectedGroups,
-        ...remainingGroups.slice(insertionIdx),
-      ];
-
-      // Aplanar reasignando order_index secuencial y superset_group
-      const result: ExerciseBlockData[] = [];
-      reordered.forEach((group, gIdx) => {
-        const oi = group.variants[0]?.order_index;
-        const isSelected = oi !== undefined && selectedSet.has(oi);
-        group.variants.forEach((v) => {
-          result.push({
-            ...v,
-            order_index: gIdx,
-            superset_group: isSelected ? uuid : v.superset_group,
-          });
-        });
-      });
-
-      return result;
-    });
-
+    setBlocks((prev) => combineGroupsIntoSuperset(prev, combineMode.selected));
     setCombineMode({ active: false, selected: [] });
   }, [combineMode.selected]);
 
   /**
-   * Disuelve un superset: setea superset_group=null en todos los bloques
-   * con el UUID dado.
+   * Disuelve el superset completo usando ungroupSuperset de superset-edit.ts.
    */
   const handleDissolveSuperset = useCallback((supersetGroupId: string) => {
-    setBlocks((prev) =>
-      prev.map((b) =>
-        b.superset_group === supersetGroupId
-          ? { ...b, superset_group: null }
-          : b
-      )
-    );
+    setBlocks((prev) => ungroupSuperset(prev, supersetGroupId));
+  }, []);
+
+  /**
+   * Saca un grupo-de-variantes de su superset usando removeGroupFromSuperset.
+   * Si el superset queda con <2 grupos, se disuelve por completo.
+   */
+  const handleRemoveGroupFromSuperset = useCallback((orderIndex: number) => {
+    setBlocks((prev) => removeGroupFromSuperset(prev, orderIndex));
   }, []);
 
   const onSubmit = handleSubmit(async (values) => {
@@ -597,8 +579,8 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
       )}
 
       <div className="flex flex-col gap-lg">
-        {/* Barra superior: nombre + días + alumnos + acciones */}
-        <div className="flex flex-col gap-sm">
+        {/* Barra superior: nombre + días + alumnos + acciones — oculta en combine mode */}
+        {!combineMode.active && <div className="flex flex-col gap-sm">
           <div className="flex items-center gap-md flex-wrap">
             <input
               {...register("title")}
@@ -678,68 +660,56 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
           </div>
 
           {errors.title && <p className="text-xxs text-destructive m-0">{errors.title.message}</p>}
-        </div>
+        </div>}
 
-        {saveError && <ErrorBanner message={saveError} dismissible />}
+        {saveError && !combineMode.active && <ErrorBanner message={saveError} dismissible />}
 
-        {/* ── Barra de combine mode ── */}
+        {/* ── Barra de combine mode — idéntica a WeekRoutineExercisesEditor ── */}
         {combineMode.active && !isReadOnly && (
-          <div
-            className="flex items-center gap-md p-md rounded-lg sticky top-4 z-10"
-            style={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--warning-alpha-40)",
-              boxShadow: "0 4px 24px var(--warning-alpha-12)",
-            }}
-          >
-            <Link2 size={16} style={{ color: "var(--warning)", flexShrink: 0 }} />
-            <span className="text-sm font-medium text-fg flex-1">
-              Seleccioná los ejercicios a combinar ({combineMode.selected.length} seleccionado{combineMode.selected.length !== 1 ? "s" : ""})
-            </span>
+          <div className="flex items-center gap-md min-h-11">
             <Button
               type="button"
               variant="ghost"
-              size="sm"
+              size="md"
               onClick={handleCancelCombine}
+              className="flex-1"
             >
               Cancelar
             </Button>
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="md"
               disabled={combineMode.selected.length < 2}
               onClick={handleSaveCombine}
-              iconLeft={<Link2 size={14} />}
+              className="flex-1"
             >
-              Combinar
+              Combinar ({combineMode.selected.length})
             </Button>
           </div>
         )}
 
-        {/* Lista de ejercicios (por grupos de variantes, segmentada en clusters) */}
+        {/* Lista de ejercicios — agrupada en unidades de render con contigüidad garantizada */}
         <div className="flex flex-col gap-lg">
           {(() => {
-            // Segmentar grupos en "unidades de render":
-            // grupos consecutivos con el mismo superset_group (no null) → cluster
-            // los demás → standalone
+            // Normalizar contigüidad de supersets antes de segmentar
+            const orderedGroups = normalizeGroupContiguity(groups);
+
             type RenderUnit =
-              | { type: "standalone"; group: ExerciseGroup; gIdx: number }
+              | { type: "standalone"; group: (typeof orderedGroups)[number]; gIdx: number }
               | {
                   type: "cluster";
                   supersetGroupId: string;
-                  items: Array<{ group: ExerciseGroup; gIdx: number }>;
+                  items: Array<{ group: (typeof orderedGroups)[number]; gIdx: number }>;
                 };
 
             const units: RenderUnit[] = [];
 
-            for (let i = 0; i < groups.length; i++) {
-              const group = groups[i];
+            for (let i = 0; i < orderedGroups.length; i++) {
+              const group = orderedGroups[i];
               const sg = group.variants[0]?.superset_group ?? null;
 
               if (sg) {
-                // Es parte de un superset: si la última unidad ya es un cluster
-                // con el mismo UUID, agregar; si no, crear uno nuevo.
                 const last = units[units.length - 1];
                 if (last?.type === "cluster" && last.supersetGroupId === sg) {
                   last.items.push({ group, gIdx: i });
@@ -763,14 +733,14 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
                     key={group.groupKey}
                     variants={group.variants}
                     groupIndex={gIdx}
-                    totalGroups={groups.length}
+                    totalGroups={orderedGroups.length}
                     readOnly={isReadOnly}
                     onUpdate={handleUpdateBlock}
                     onRemove={handleRemoveBlock}
                     onReorderGroup={handleReorderGroup}
                     onAddVariant={handleAddVariant}
                     onStartCombine={
-                      !isReadOnly
+                      !isReadOnly && !combineMode.active
                         ? () => handleStartCombine(group.variants[0]!.order_index)
                         : undefined
                     }
@@ -787,39 +757,48 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
                 );
               }
 
-              // Cluster de superset — key estable basada en su primer miembro
-              // (evita colisión si el mismo UUID quedara no-consecutivo tras un reorder).
               return (
-                <SupersetGroupBorder
+                <SupersetGroupSection
                   key={unit.items[0]?.group.groupKey ?? unit.supersetGroupId}
-                  exerciseCount={unit.items.length}
-                  onDissolve={() => handleDissolveSuperset(unit.supersetGroupId)}
+                  memberCount={unit.items.length}
+                  combineMode={combineMode.active}
+                  readOnly={isReadOnly}
+                  onUngroup={
+                    !isReadOnly
+                      ? () => handleDissolveSuperset(unit.supersetGroupId)
+                      : undefined
+                  }
                 >
-                  {unit.items.map(({ group, gIdx }, itemIdx) => (
-                    <div
+                  {unit.items.map(({ group, gIdx }) => (
+                    <ExerciseBlock
                       key={group.groupKey}
-                      className="p-md"
-                      style={{
-                        borderBottom:
-                          itemIdx < unit.items.length - 1
-                            ? "1px solid var(--separator-subtle)"
-                            : undefined,
-                      }}
-                    >
-                      <ExerciseBlock
-                        variants={group.variants}
-                        groupIndex={gIdx}
-                        totalGroups={groups.length}
-                        readOnly={isReadOnly}
-                        onUpdate={handleUpdateBlock}
-                        onRemove={handleRemoveBlock}
-                        onReorderGroup={handleReorderGroup}
-                        onAddVariant={handleAddVariant}
-                        // No se pasa onStartCombine dentro del cluster — ya están combinados
-                      />
-                    </div>
+                      variants={group.variants}
+                      groupIndex={gIdx}
+                      totalGroups={orderedGroups.length}
+                      readOnly={isReadOnly}
+                      onUpdate={handleUpdateBlock}
+                      onRemove={handleRemoveBlock}
+                      onReorderGroup={handleReorderGroup}
+                      onAddVariant={handleAddVariant}
+                      onRemoveFromGroup={
+                        !isReadOnly
+                          ? () => handleRemoveGroupFromSuperset(
+                              group.variants[0]?.order_index ?? -1
+                            )
+                          : undefined
+                      }
+                      combineMode={combineMode.active}
+                      combineSelected={combineMode.selected.includes(
+                        group.variants[0]?.order_index ?? -1
+                      )}
+                      onToggleCombineSelect={() =>
+                        handleToggleCombineSelect(
+                          group.variants[0]?.order_index ?? -1
+                        )
+                      }
+                    />
                   ))}
-                </SupersetGroupBorder>
+                </SupersetGroupSection>
               );
             });
           })()}

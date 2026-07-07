@@ -121,8 +121,11 @@ mantener la misma semántica de color, estructura e íconos.
 
 ### Superset (ejercicios combinados)
 
-Replica `mobile/components/workout/SupersetGroupBorder.tsx`. Implementado en
-`web/src/components/plannings/WeekRoutineExercisesEditor.tsx`:
+Replica `mobile/components/workout/SupersetGroupBorder.tsx`. El markup canónico
+vive en el componente compartido `web/src/components/routines/SupersetGroupSection.tsx`,
+usado por ambos editores (`RoutineEditor.tsx` y `WeekRoutineExercisesEditor.tsx`).
+**NO** reintroducir una caja con borde ni duplicar el JSX — cualquier vista nueva que
+muestre un grupo superset debe usar `SupersetGroupSection`.
 
 - **NO** envolver los miembros en una caja con borde (evitar "caja dentro de caja").
 - **Acento ámbar** vertical a la izquierda del grupo: barra de 3px `rounded-full`
@@ -132,6 +135,10 @@ Replica `mobile/components/workout/SupersetGroupBorder.tsx`. Implementado en
   en `--warning`. El "Separar" va dentro del chip, separado por un divisor
   (`--warning-alpha-30`), como icon-button `Unlink2` en `--destructive`.
 - Los ejercicios del grupo van como cards apiladas (`gap-sm`) debajo del chip.
+
+**Helpers de mutación (`src/lib/superset-edit.ts`):**
+- Helpers planos (`combineIntoGroup`, `ungroupSuperset`, `removeFromSupersetGroup`) — usados por el editor de plannings.
+- Helpers a nivel grupo-de-variantes (`combineGroupsIntoSuperset`, `removeGroupFromSuperset`) — usados por el editor de rutinas.
 
 ### Variantes (suplentes)
 

@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Save, Trash2, History, CalendarClock, Link2, Unlink2 } from "lucide-react";
+import { Save, Trash2, History, CalendarClock } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 import { Button } from "@/components/ui/Button";
@@ -23,6 +23,7 @@ import {
   ExerciseBlockData,
   routineExerciseToBlock,
 } from "@/components/routines/ExerciseBlock";
+import { SupersetGroupSection } from "@/components/routines/SupersetGroupSection";
 import { editableToRoutineSet } from "@/components/routines/SetsTable";
 import { resolveVariablesConfig } from "@/lib/exercise-presets";
 import { groupBySupersetGroup } from "@/lib/superset-grouping";
@@ -594,85 +595,37 @@ export const WeekRoutineExercisesEditor: React.FC<
             const groupStartIndex = displayIndex;
             displayIndex += item.memberBlocks.length;
             return (
-              <div key={`sg-${item.groupId}`} className="flex gap-sm">
-                {/* Acento ámbar redondeado a la izquierda (estilo mobile) */}
-                <div
-                  className="w-[3px] rounded-full self-stretch flex-shrink-0"
-                  style={{
-                    background: combineMode ? "var(--separator)" : "var(--warning)",
-                    opacity: combineMode ? 1 : 0.8,
-                  }}
-                />
-                <div className="flex-1 min-w-0 flex flex-col gap-sm">
-                  {/* Chip pill "Superset · N ejercicios" */}
-                  <div
-                    className="self-start inline-flex items-center gap-sm pl-md pr-xs py-xxs rounded-pill"
-                    style={{
-                      background: "var(--warning-alpha-12)",
-                      border: "1px solid var(--warning-alpha-30)",
-                    }}
-                  >
-                    <span className="flex items-center gap-xs">
-                      <Link2 size={14} style={{ color: "var(--warning)" }} />
-                      <span
-                        className="text-xs font-semibold tracking-wide whitespace-nowrap"
-                        style={{ color: "var(--warning)" }}
-                      >
-                        Superset · {item.memberBlocks.length}{" "}
-                        {item.memberBlocks.length === 1 ? "ejercicio" : "ejercicios"}
-                      </span>
-                    </span>
-                    {/* Separar — solo fuera del modo combinar y si no readOnly */}
-                    {!combineMode && !readOnly && (
-                      <>
-                        <span
-                          className="w-px h-4 flex-shrink-0"
-                          style={{ background: "var(--warning-alpha-30)" }}
-                        />
-                        <button
-                          type="button"
-                          title="Separar superset"
-                          aria-label="Separar superset"
-                          onClick={() => handleUngroupSuperset(item.groupId)}
-                          className="flex items-center justify-center w-6 h-6 rounded-pill transition-opacity hover:opacity-80 flex-shrink-0"
-                          style={{
-                            color: "var(--destructive)",
-                            background: "var(--destructive-alpha-12)",
-                          }}
-                        >
-                          <Unlink2 size={13} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {/* Cards de los ejercicios del grupo */}
-                  <div className="flex flex-col gap-sm">
-                    {item.memberBlocks.map((block, memberIdx) => {
-                      const gIdx = groupStartIndex + memberIdx;
-                      return (
-                        <ExerciseBlock
-                          key={block._key}
-                          variants={[block]}
-                          groupIndex={gIdx}
-                          totalGroups={totalVisualGroups}
-                          readOnly={readOnly || combineMode}
-                          defaultExpanded={false}
-                          onUpdate={handleUpdate}
-                          onRemove={handleRemove}
-                          onReorderGroup={handleReorderGroup}
-                          onAddVariant={handleAddVariant}
-                          onRemoveFromGroup={
-                            !readOnly ? () => handleRemoveFromGroup(block._key) : undefined
-                          }
-                          combineMode={combineMode}
-                          combineSelected={combineSelectedKeys.has(block._key)}
-                          onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+              <SupersetGroupSection
+                key={`sg-${item.groupId}`}
+                memberCount={item.memberBlocks.length}
+                combineMode={combineMode}
+                readOnly={readOnly}
+                onUngroup={!readOnly ? () => handleUngroupSuperset(item.groupId) : undefined}
+              >
+                {item.memberBlocks.map((block, memberIdx) => {
+                  const gIdx = groupStartIndex + memberIdx;
+                  return (
+                    <ExerciseBlock
+                      key={block._key}
+                      variants={[block]}
+                      groupIndex={gIdx}
+                      totalGroups={totalVisualGroups}
+                      readOnly={readOnly || combineMode}
+                      defaultExpanded={false}
+                      onUpdate={handleUpdate}
+                      onRemove={handleRemove}
+                      onReorderGroup={handleReorderGroup}
+                      onAddVariant={handleAddVariant}
+                      onRemoveFromGroup={
+                        !readOnly ? () => handleRemoveFromGroup(block._key) : undefined
+                      }
+                      combineMode={combineMode}
+                      combineSelected={combineSelectedKeys.has(block._key)}
+                      onToggleCombineSelect={() => handleToggleCombineSelect(block._key)}
+                    />
+                  );
+                })}
+              </SupersetGroupSection>
             );
           } else {
             const idx = displayIndex++;

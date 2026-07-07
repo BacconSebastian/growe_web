@@ -85,6 +85,25 @@ Referencia ya implementada: **Dashboard**, **Alumnos**, **Rutinas**.
 
 ---
 
+## Resolución de nombres de contactos — Aliases (MANDATORY)
+
+El panel resuelve nombres con la prioridad **alias > nombre completo > username**, igual que mobile (`mobile/lib/display-name.ts`).
+
+**Helpers en `src/lib/utils.ts`:**
+
+- `getDisplayName(user, aliases?)` — alias > fullName > username > `"Usuario"`.
+- `getDisplaySubtitle(user, aliases?)` — con alias: `"fullName · username"`; sin alias y con fullName: username; sin ambos: `null`.
+- `UserLike` tiene `id?: number` opcional; sin `id` no se resuelve alias (usado a propósito para el usuario propio del coach).
+
+**Infraestructura:**
+
+- `src/lib/api/aliases.ts` — `getAliases()` → `AliasMap` (`Record<number, string>`), vía `GET /community/aliases`. Solo lectura; editar aliases es exclusivo de mobile.
+- `src/contexts/AliasContext.tsx` — `AliasProvider` montado en `(panel)/layout.tsx` (dentro de `RequireCoach`). Hook: `const { aliases, getAlias, refresh } = useAliases()`.
+
+**Regla para vistas nuevas:** cualquier vista o listado que muestre nombres de contactos (alumnos, coaches, miembros de grupo) DEBE pasar `aliases` de `useAliases()` a `getDisplayName`. Esto incluye los filtros de búsqueda client-side para que el término matchee también el alias. El saludo del coach y su propio perfil **no** pasan aliases.
+
+---
+
 ## Paridad mobile ↔ web (MANDATORY)
 
 El panel web debe **replicar el lenguaje visual de mobile** para los componentes

@@ -5,6 +5,7 @@ import { UserPlus, Users, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { listStudents, type StudentListItem } from "@/lib/api/coaching";
 import { getErrorMessage, getUserInitials, getDisplayName } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -82,11 +83,13 @@ interface StudentRowProps {
 }
 
 function StudentRow({ student, isLast }: StudentRowProps) {
+  const { aliases } = useAliases();
   const displayName = getDisplayName({
+    id: student.id,
     first_name: student.first_name,
     last_name: student.last_name,
     username: student.username,
-  });
+  }, aliases);
   const initials = getUserInitials({
     first_name: student.first_name,
     last_name: student.last_name,

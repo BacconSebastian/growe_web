@@ -12,6 +12,7 @@ import { SkeletonCircle, SkeletonLine } from "@/components/ui/Skeleton";
 import { getGroupLeaderboard } from "@/lib/api/coaching";
 import type { LeaderboardEntry } from "@/lib/api/types";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 
 type SortBy = "workouts" | "streak" | "volume";
 type Period = "week" | "15days" | "month";
@@ -86,6 +87,7 @@ interface GroupLeaderboardProps {
  * Paginación client-side + búsqueda opcional.
  */
 export const GroupLeaderboard: React.FC<GroupLeaderboardProps> = ({ groupId }) => {
+  const { aliases } = useAliases();
   const [sortBy, setSortBy] = useState<SortBy>("workouts");
   const [period, setPeriod] = useState<Period>("week");
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -116,7 +118,7 @@ export const GroupLeaderboard: React.FC<GroupLeaderboardProps> = ({ groupId }) =
     if (!term) return entries;
     return entries.filter(
       (e) =>
-        getDisplayName(e.student).toLowerCase().includes(term) ||
+        getDisplayName({ ...e.student, id: e.student.id }, aliases).toLowerCase().includes(term) ||
         e.student.username.toLowerCase().includes(term)
     );
   }, [entries, search]);
@@ -225,7 +227,7 @@ export const GroupLeaderboard: React.FC<GroupLeaderboardProps> = ({ groupId }) =
             {pagedEntries.map((entry, idx) => {
               const isTopThree = entry.rank <= 3;
               const initials = getUserInitials(entry.student);
-              const displayName = getDisplayName(entry.student);
+              const displayName = getDisplayName({ ...entry.student, id: entry.student.id }, aliases);
               const isLast = idx === pagedEntries.length - 1;
               const rankColor = RANK_COLORS[entry.rank] ?? "var(--primary)";
 

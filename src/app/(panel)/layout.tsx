@@ -7,6 +7,7 @@ import { Topbar } from "@/components/ui/Topbar";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDisplayName } from "@/lib/utils";
+import { AliasProvider } from "@/contexts/AliasContext";
 
 /** Deriva el título de la topbar a partir del pathname */
 function getTitleFromPathname(pathname: string): string {
@@ -72,7 +73,9 @@ export default function PanelLayout({
 }) {
   return (
     <RequireCoach>
-      <PanelShell>{children}</PanelShell>
+      <AliasProvider>
+        <PanelShell>{children}</PanelShell>
+      </AliasProvider>
     </RequireCoach>
   );
 }

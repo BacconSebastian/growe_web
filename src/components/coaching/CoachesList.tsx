@@ -20,6 +20,7 @@ import { SkeletonCircle, SkeletonLine } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { listCoaches } from "@/lib/api/coaching";
 import { getErrorMessage, getDisplayName } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import type { CoachesListResponse } from "@/lib/api/coaching";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -61,11 +62,13 @@ interface CoachRowProps {
 }
 
 const CoachRow: React.FC<CoachRowProps> = ({ coach, isLast }) => {
+  const { aliases } = useAliases();
   const displayName = getDisplayName({
+    id: coach.id,
     first_name: coach.first_name,
     last_name: coach.last_name,
     username: coach.username,
-  });
+  }, aliases);
 
   const username = `@${coach.username}`;
 

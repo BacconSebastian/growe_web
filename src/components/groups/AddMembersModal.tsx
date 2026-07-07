@@ -11,6 +11,7 @@ import { SkeletonCircle, SkeletonLine } from "@/components/ui/Skeleton";
 import { listStudents, addGroupMembers } from "@/lib/api/coaching";
 import type { StudentListItem } from "@/lib/api/coaching";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 
 const SEARCH_THRESHOLD = 8;
 const PER_PAGE = 5;
@@ -43,6 +44,7 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
   currentMemberIds,
   onAdded,
 }) => {
+  const { aliases } = useAliases();
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
     if (!term) return students;
     return students.filter(
       (s) =>
-        getDisplayName(s).toLowerCase().includes(term) ||
+        getDisplayName({ ...s, id: s.id }, aliases).toLowerCase().includes(term) ||
         s.username.toLowerCase().includes(term)
     );
   }, [students, search]);
@@ -165,7 +167,7 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
                 {pagedStudents.map((student, idx) => {
                   const selected = selectedIds.has(student.id);
                   const initials = getUserInitials(student);
-                  const displayName = getDisplayName(student);
+                  const displayName = getDisplayName({ ...student, id: student.id }, aliases);
                   const isLast = idx === pagedStudents.length - 1;
 
                   return (

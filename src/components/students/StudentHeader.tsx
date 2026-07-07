@@ -5,6 +5,7 @@ import { GradientSurface } from "@/components/ui/GradientSurface";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { getUserInitials, getDisplayName } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 
 /**
  * Información mínima del alumno que necesita el header.
@@ -29,11 +30,13 @@ interface StudentHeaderProps {
  * Sin botones de acción (accesibles como banners debajo del header).
  */
 export const StudentHeader: React.FC<StudentHeaderProps> = ({ student }) => {
+  const { aliases } = useAliases();
   const displayName = getDisplayName({
+    id: student.id,
     first_name: student.first_name,
     last_name: student.last_name,
     username: student.username,
-  });
+  }, aliases);
   const initials = getUserInitials({
     first_name: student.first_name,
     last_name: student.last_name,

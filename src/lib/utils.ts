@@ -1,5 +1,6 @@
 import { ApiError } from "./api/http";
 import type { User } from "./api/types";
+import type { AliasMap } from "./api/aliases";
 
 // ─── Patrones de errores técnicos ─────────────────────────────────────────────
 
@@ -97,14 +98,47 @@ export function getUserInitials(user: Pick<User, "first_name" | "last_name" | "u
 }
 
 /**
- * Devuelve el nombre para mostrar de un usuario.
- * Prioriza first_name + last_name; si no, username.
+ * Shape mínima de usuario necesaria para resolución de nombre.
+ * `id` es opcional para mantener compatibilidad con el usuario propio (no debe
+ * resolver aliases sobre sí mismo).
  */
-export function getDisplayName(user: Pick<User, "first_name" | "last_name" | "username">): string {
-  const first = user.first_name?.trim();
-  const last = user.last_name?.trim();
+export interface UserLike {
+  id?: number;
+  username: string;
+  first_name?: string | null;
+  last_name?: string | null;
+}
 
-  if (first && last) return `${first} ${last}`;
-  if (first) return first;
-  return user.username;
+/**
+ * Devuelve el nombre completo (first + last) del usuario, o null si no tiene.
+ */
+export function getFullName(user: Pick<UserLike, "first_name" | "last_name">): string | null {
+  const full = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  return full || null;
+}
+
+/**
+ * Devuelve el nombre para mostrar de un usuario con prioridad:
+ *   alias (si se provee mapa) > nombre completo > username
+ */
+export function getDisplayName(user: UserLike, aliases?: AliasMap): string {
+  const alias = user.id != null ? aliases?.[user.id] : undefined;
+  if (alias) return alias;
+  return getFullName(user) ?? user.username ?? "Usuario";
+}
+
+/**
+ * Devuelve el subtítulo (línea secundaria) de un usuario.
+ * Cuando hay alias → muestra nombre completo · @username (o solo @username).
+ * Cuando hay nombre completo → muestra @username.
+ * Cuando solo hay username → null.
+ */
+export function getDisplaySubtitle(user: UserLike, aliases?: AliasMap): string | null {
+  const alias = user.id != null ? aliases?.[user.id] : undefined;
+  const fullName = getFullName(user);
+  if (alias) {
+    return fullName ? `${fullName} · ${user.username}` : (user.username ?? null);
+  }
+  if (fullName) return user.username ?? null;
+  return null;
 }

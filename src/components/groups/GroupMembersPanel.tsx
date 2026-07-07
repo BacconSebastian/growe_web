@@ -12,6 +12,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { removeGroupMember } from "@/lib/api/coaching";
 import type { TrainingGroupMember } from "@/lib/api/types";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import { StudentBadges } from "@/components/coaching/StudentBadges";
 
 const SEARCH_THRESHOLD = 8;
@@ -44,6 +45,7 @@ export const GroupMembersPanel: React.FC<GroupMembersPanelProps> = ({
   onAddMembersClick,
   onMemberRemoved,
 }) => {
+  const { aliases } = useAliases();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [removeTarget, setRemoveTarget] = useState<TrainingGroupMember | null>(null);
@@ -55,7 +57,7 @@ export const GroupMembersPanel: React.FC<GroupMembersPanelProps> = ({
     if (!term) return members;
     return members.filter(
       (m) =>
-        getDisplayName(m).toLowerCase().includes(term) ||
+        getDisplayName({ ...m, id: m.id }, aliases).toLowerCase().includes(term) ||
         m.username.toLowerCase().includes(term)
     );
   }, [members, search]);
@@ -139,7 +141,7 @@ export const GroupMembersPanel: React.FC<GroupMembersPanelProps> = ({
             >
               {pagedMembers.map((member, idx) => {
                 const initials = getUserInitials(member);
-                const displayName = getDisplayName(member);
+                const displayName = getDisplayName({ ...member, id: member.id }, aliases);
                 const isLast = idx === pagedMembers.length - 1;
 
                 return (
@@ -221,7 +223,7 @@ export const GroupMembersPanel: React.FC<GroupMembersPanelProps> = ({
         title="Quitar miembro"
         description={
           removeTarget
-            ? `¿Querés quitar a ${getDisplayName(removeTarget)} del grupo?`
+            ? `¿Querés quitar a ${getDisplayName({ ...removeTarget, id: removeTarget.id }, aliases)} del grupo?`
             : ""
         }
         confirmLabel="Quitar"

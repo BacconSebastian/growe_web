@@ -20,6 +20,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Dumbbell, Users } from "lucide
 import { getCoachCalendar, listGroups } from "@/lib/api/coaching";
 import { toARDateKey } from "@/lib/datetime";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -257,6 +258,7 @@ interface DayDetailModalProps {
 }
 
 const DayDetailModal: React.FC<DayDetailModalProps> = ({ selected, onClose }) => {
+  const { aliases } = useAliases();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -274,10 +276,11 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ selected, onClose }) =>
     if (!term) return selected.workouts;
     return selected.workouts.filter((w) => {
       const display = getDisplayName({
+        id: w.student_id,
         username: w.username,
         first_name: w.first_name ?? null,
         last_name: w.last_name ?? null,
-      }).toLowerCase();
+      }, aliases).toLowerCase();
       return (
         display.includes(term) ||
         w.username.toLowerCase().includes(term) ||
@@ -347,10 +350,11 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ selected, onClose }) =>
                   <div className="flex flex-col gap-xxs flex-1 min-w-0">
                     <span className="text-sm font-semibold text-fg truncate">
                       {getDisplayName({
+                        id: item.student_id,
                         username: item.username,
                         first_name: item.first_name ?? null,
                         last_name: item.last_name ?? null,
-                      })}
+                      }, aliases)}
                     </span>
                     <div className="flex items-center gap-xs text-fg-tertiary">
                       <Dumbbell size={11} className="flex-shrink-0" />

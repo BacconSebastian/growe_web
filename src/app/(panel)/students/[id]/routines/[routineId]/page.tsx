@@ -9,6 +9,7 @@ import { SkeletonLine } from "@/components/ui/Skeleton";
 import { getStudent } from "@/lib/api/coaching";
 import { getStudentRoutine } from "@/lib/api/coaching";
 import { getDisplayName } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import type { User } from "@/lib/api/types";
 
 /**
@@ -22,6 +23,7 @@ export default function StudentRoutineEditorPage() {
   const studentId = params?.id ? Number(params.id) : undefined;
   const routineId = params?.routineId ? Number(params.routineId) : undefined;
 
+  const { aliases } = useAliases();
   const [student, setStudent] = useState<User | null>(null);
   const [routineTitle, setRoutineTitle] = useState<string | null>(null);
   const [loadingHeader, setLoadingHeader] = useState(true);
@@ -77,7 +79,7 @@ export default function StudentRoutineEditorPage() {
             className="text-sm text-fg-secondary hover:text-fg transition-colors"
             style={{ textDecoration: "none" }}
           >
-            {student ? getDisplayName(student) : `Alumno ${studentId}`}
+            {student ? getDisplayName(student, aliases) : `Alumno ${studentId}`}
           </Link>
         )}
 

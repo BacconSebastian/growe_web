@@ -32,6 +32,7 @@ import { SkeletonCircle, SkeletonLine } from "@/components/ui/Skeleton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { listCoachingRequests, cancelCoachRequest } from "@/lib/api/coaching";
 import { getErrorMessage, getDisplayName } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 import type { CoachingRequest } from "@/lib/api/coaching";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ interface RequestRowProps {
 }
 
 const RequestRow: React.FC<RequestRowProps> = ({ request, onCancel, cancelling }) => {
+  const { aliases } = useAliases();
   const receiver = request.sender; // En solicitudes salientes el "sender" es el propio coach,
   // pero el backend incluye en el campo `sender` el usuario destino según el contexto.
   // En realidad para salientes necesitamos el receiver — ver nota abajo.
@@ -99,10 +101,11 @@ const RequestRow: React.FC<RequestRowProps> = ({ request, onCancel, cancelling }
    */
   const displayName = receiver
     ? getDisplayName({
+        id: receiver.id,
         first_name: receiver.first_name,
         last_name: receiver.last_name,
         username: receiver.username,
-      })
+      }, aliases)
     : `Usuario #${request.receiver_id}`;
 
   const username = receiver?.username

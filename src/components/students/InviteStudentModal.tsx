@@ -12,6 +12,7 @@ import {
   type UserSearchResult,
 } from "@/lib/api/coaching";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 
 interface InviteStudentModalProps {
   open: boolean;
@@ -31,6 +32,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { aliases } = useAliases();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -87,10 +89,11 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({
       await sendCoachRequest(target.id);
       setSuccess(
         getDisplayName({
+          id: target.id,
           first_name: target.first_name,
           last_name: target.last_name,
           username: target.username,
-        })
+        }, aliases)
       );
       onSuccess?.();
     } catch (err) {
@@ -172,10 +175,11 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({
             ) : (
               results.map((u) => {
                 const name = getDisplayName({
+                  id: u.id,
                   first_name: u.first_name,
                   last_name: u.last_name,
                   username: u.username,
-                });
+                }, aliases);
                 const initials = getUserInitials({
                   first_name: u.first_name,
                   last_name: u.last_name,

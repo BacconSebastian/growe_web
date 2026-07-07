@@ -11,6 +11,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { listStudents, createGroup } from "@/lib/api/coaching";
 import type { StudentListItem } from "@/lib/api/coaching";
 import { getErrorMessage, getDisplayName, getUserInitials } from "@/lib/utils";
+import { useAliases } from "@/contexts/AliasContext";
 
 const SEARCH_THRESHOLD = 8;
 const PER_PAGE = 5;
@@ -35,6 +36,7 @@ function StudentsLoadingSkeleton() {
 export default function NewGroupPage() {
   const router = useRouter();
 
+  const { aliases } = useAliases();
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [studentsError, setStudentsError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export default function NewGroupPage() {
     if (!term) return students;
     return students.filter(
       (s) =>
-        getDisplayName(s).toLowerCase().includes(term) ||
+        getDisplayName({ ...s, id: s.id }, aliases).toLowerCase().includes(term) ||
         s.username.toLowerCase().includes(term)
     );
   }, [students, studentsSearch]);
@@ -148,7 +150,7 @@ export default function NewGroupPage() {
                 {pagedStudents.map((student) => {
                   const selected = selectedIds.has(student.id);
                   const initials = getUserInitials(student);
-                  const displayName = getDisplayName(student);
+                  const displayName = getDisplayName({ ...student, id: student.id }, aliases);
 
                   return (
                     <button

@@ -8,15 +8,14 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { GradientSurface } from "@/components/ui/GradientSurface";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { SkeletonBox, SkeletonLine } from "@/components/ui/Skeleton";
-import { RoutineCard, ROUTINE_CARD_HEIGHT } from "@/components/routines/RoutineCard";
+import { SkeletonLine, SkeletonCircle } from "@/components/ui/Skeleton";
+import { RoutineRow, ROW_HEIGHT } from "@/components/routines/RoutineCard";
 import { listRoutines } from "@/lib/api/routines";
 import { getErrorMessage } from "@/lib/utils";
 import type { Routine } from "@/lib/api/types";
 
-const PER_PAGE = 8;
+const PER_PAGE = 7;
 
 // Días (valor = clave inglesa que guarda Routine.day_of_week; label = español)
 const DAY_OPTIONS: { value: string; label: string }[] = [
@@ -44,6 +43,55 @@ const MUSCLE_OPTIONS: { value: string; label: string }[] = [
   { value: "abdomen", label: "Abdomen" },
   { value: "cardio", label: "Cardio" },
 ];
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function ListSkeleton() {
+  const rows = Array.from({ length: PER_PAGE }, (_, i) => i);
+  return (
+    <GradientSurface>
+      <div
+        className="flex flex-col"
+        style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+      >
+        {rows.map((i) => (
+          <div
+            key={i}
+            className="flex items-center gap-md px-xl"
+            style={{
+              height: ROW_HEIGHT,
+              ...(i < PER_PAGE - 1
+                ? { borderBottom: "1px solid var(--separator-subtle)" }
+                : {}),
+            }}
+          >
+            <SkeletonCircle size={40} />
+            <div className="flex flex-col gap-xs flex-1">
+              <SkeletonLine width={160} height={14} />
+              <div className="flex gap-xs">
+                <SkeletonLine width={90} height={18} className="rounded-pill" />
+                <SkeletonLine width={70} height={18} className="rounded-pill" />
+              </div>
+            </div>
+            <SkeletonLine width={88} height={30} />
+          </div>
+        ))}
+      </div>
+
+      {/* Shell de paginación — espeja el padding/altura real de <Pagination> */}
+      <div
+        className="flex items-center justify-between gap-lg py-md px-lg"
+        style={{ borderTop: "1px solid var(--separator-subtle)" }}
+      >
+        <SkeletonLine width={80} height={14} />
+        <div className="flex items-center gap-sm">
+          <SkeletonLine width={84} height={30} className="rounded-pill" />
+          <SkeletonLine width={90} height={30} className="rounded-pill" />
+        </div>
+      </div>
+    </GradientSurface>
+  );
+}
 
 /**
  * /routines — Lista de rutinas del coach. Búsqueda + filtros (día / grupo
@@ -141,64 +189,64 @@ export default function RoutinesPage() {
 
       {/* Contenido */}
       {loading ? (
-        <GradientSurface>
-          <div className="min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
-              {Array.from({ length: PER_PAGE }).map((_, i) => (
-                <SkeletonBox key={i} height={ROUTINE_CARD_HEIGHT} />
-              ))}
-            </div>
-          </div>
-          {/* Shell de paginación — espeja el padding/altura real de <Pagination> */}
-          <div
-            className="flex items-center justify-between gap-lg py-md px-lg"
-            style={{ borderTop: "1px solid var(--separator-subtle)" }}
-          >
-            <SkeletonLine width={80} height={14} />
-            <div className="flex items-center gap-sm">
-              <SkeletonLine width={84} height={30} className="rounded-pill" />
-              <SkeletonLine width={90} height={30} className="rounded-pill" />
-            </div>
-          </div>
-        </GradientSurface>
+        <ListSkeleton />
       ) : routines.length === 0 && !hasActiveFilters ? (
-        /* No hay NINGUNA rutina creada */
-        <EmptyState
-          icon={<Dumbbell size={24} />}
-          title="Todavía no tenés rutinas"
-          description="Creá tu primera rutina con ejercicios, series y descansos. Después podés asignarla a alumnos."
-          action={
-            <Link href="/routines/new">
+        /* No hay NINGUNA rutina creada — dentro de GradientSurface con Pagination (VIEW_BASES §4) */
+        <GradientSurface>
+          <div
+            className="flex flex-col items-center justify-center gap-sm px-xl text-center"
+            style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+          >
+            <Dumbbell size={28} style={{ color: "var(--fg-tertiary)" }} />
+            <p className="text-base font-medium text-fg m-0">
+              Todavía no tenés rutinas
+            </p>
+            <p className="text-sm text-fg-secondary m-0">
+              Creá tu primera rutina con ejercicios, series y descansos. Después podés asignarla a alumnos.
+            </p>
+            <Link href="/routines/new" className="mt-sm">
               <Button variant="primary" size="md" iconLeft={<Plus size={16} />}>
                 Crear mi primera rutina
               </Button>
             </Link>
-          }
-        />
+          </div>
+          {/* Paginación siempre visible */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+            <Pagination
+              page={page}
+              perPage={PER_PAGE}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
+        </GradientSurface>
       ) : (
-        /* Cards wrapeadas en un contenedor con la paginación al pie (como Alumnos).
-           Alto reservado para una página completa (8 cards) por breakpoint, así la
-           paginación queda siempre en el mismo lugar:
-           2 col → 4 filas (792px) · 3 col → 3 filas (600px) · 4 col → 2 filas (408px) */
+        /* Filas wrapeadas en GradientSurface — el alto reservado para PER_PAGE filas
+           asegura que la paginación siempre quede en el mismo lugar. */
         <GradientSurface>
-          <div className="flex flex-col min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
+          <div
+            className="flex flex-col"
+            style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+          >
             {routines.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-sm py-5xl text-center">
+              <div
+                className="flex flex-col items-center justify-center gap-sm px-xl text-center"
+                style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+              >
                 <Dumbbell size={28} style={{ color: "var(--fg-tertiary)" }} />
                 <p className="text-sm text-fg-secondary m-0">
                   No hay rutinas que coincidan con los filtros.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
-                {routines.map((routine) => (
-                  <RoutineCard
-                    key={routine.id}
-                    routine={routine}
-                    href={`/routines/${routine.id}`}
-                  />
-                ))}
-              </div>
+              routines.map((routine, idx) => (
+                <RoutineRow
+                  key={routine.id}
+                  routine={routine}
+                  href={`/routines/${routine.id}`}
+                  isLast={idx === routines.length - 1}
+                />
+              ))
             )}
           </div>
 

@@ -2,17 +2,20 @@
 
 import React from "react";
 import Link from "next/link";
-import { Dumbbell } from "lucide-react";
+import { Dumbbell, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import type { Routine, DayOfWeek } from "@/lib/api/types";
 
-interface RoutineCardProps {
+interface RoutineRowProps {
   routine: Routine;
   href: string;
+  isLast: boolean;
 }
 
-/** Alto fijo de la card (px) — todas las cards miden lo mismo. */
-export const ROUTINE_CARD_HEIGHT = 176;
+/** Alto fijo de fila (px) — todas las filas miden lo mismo. */
+export const ROW_HEIGHT = 68;
+
 
 const DAY_LABELS: Record<DayOfWeek, string> = {
   monday: "Lun",
@@ -24,14 +27,14 @@ const DAY_LABELS: Record<DayOfWeek, string> = {
   sunday: "Dom",
 };
 
-function formatDays(dayOfWeek: DayOfWeek | DayOfWeek[] | null | undefined): string {
+export function formatDays(dayOfWeek: DayOfWeek | DayOfWeek[] | null | undefined): string {
   if (!dayOfWeek) return "";
   const days = Array.isArray(dayOfWeek) ? dayOfWeek : [dayOfWeek];
   if (days.length === 0) return "";
   return days.map((d) => DAY_LABELS[d] ?? d).join("/");
 }
 
-function formatRelativeDate(dateStr: string | undefined): string {
+export function formatRelativeDate(dateStr: string | undefined): string {
   if (!dateStr) return "";
   const now = new Date();
   const date = new Date(dateStr);
@@ -47,10 +50,10 @@ function formatRelativeDate(dateStr: string | undefined): string {
 }
 
 /**
- * RoutineCard — card de rutina para la lista /routines.
- * Usa Card variant="gradient" del design system.
+ * RoutineRow — fila compacta de rutina para la lista /routines.
+ * Sigue el mismo patrón visual que StudentRow en /students.
  */
-export const RoutineCard: React.FC<RoutineCardProps> = ({ routine, href }) => {
+export const RoutineRow: React.FC<RoutineRowProps> = ({ routine, href, isLast }) => {
   const exerciseCount = routine.exercises?.length ?? 0;
   const dayStr = formatDays(routine.day_of_week);
   const assignedCount =
@@ -58,70 +61,58 @@ export const RoutineCard: React.FC<RoutineCardProps> = ({ routine, href }) => {
   const lastEdited = formatRelativeDate(routine.updated_at ?? routine.createdAt);
 
   return (
-    <Link href={href} className="block group" style={{ textDecoration: "none", color: "inherit" }}>
-      {/* Card con gradiente característico (base opaca para distinguirse del
-          panel del contenedor) */}
+    <div
+      className="flex items-center gap-md px-xl transition-colors duration-100 hover:bg-fill-tertiary"
+      style={{
+        minHeight: ROW_HEIGHT,
+        ...(isLast ? {} : { borderBottom: "1px solid var(--separator-subtle)" }),
+      }}
+    >
+      {/* Ícono de rutina */}
       <div
-        className="relative rounded-lg overflow-hidden border transition-transform group-hover:-translate-y-px"
+        className="w-10 h-10 rounded-pill flex items-center justify-center flex-shrink-0"
         style={{
-          height: ROUTINE_CARD_HEIGHT,
-          borderColor: "var(--card-border-light)",
-          boxShadow: "var(--shadow-card)",
+          background: "var(--primary-alpha-12)",
+          color: "var(--primary)",
         }}
       >
-        {/* Overlay gradiente */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))",
-          }}
-        />
+        <Dumbbell size={18} />
+      </div>
 
-        <div className="relative p-xl flex flex-col h-full">
-          {/* Header: ícono + badge asignados */}
-          <div className="flex items-start justify-between gap-md">
-            <div
-              className="w-10 h-10 rounded-pill flex items-center justify-center flex-shrink-0"
-              style={{
-                background: "var(--primary-alpha-12)",
-                color: "var(--primary)",
-              }}
-            >
-              <Dumbbell size={18} />
-            </div>
-
-            {assignedCount > 0 && (
-              <Badge variant="success" size="sm">
-                {assignedCount} {assignedCount === 1 ? "alumno" : "alumnos"}
-              </Badge>
-            )}
-          </div>
-
-          {/* Nombre — ocupa el espacio flexible para alinear el footer abajo */}
-          <h3
-            className="text-base font-semibold text-fg m-0 mt-md leading-tight line-clamp-2 flex-1"
-            style={{ wordBreak: "break-word" }}
-          >
-            {routine.title}
-          </h3>
-
-          {/* Footer: detalles + fecha (siempre al pie) */}
-          <div className="flex flex-col gap-xxs">
-            <p className="text-sm text-fg-secondary m-0 truncate">
-              {exerciseCount > 0 && (
-                <>{exerciseCount} {exerciseCount === 1 ? "ejercicio" : "ejercicios"}</>
-              )}
-              {exerciseCount > 0 && dayStr && " · "}
+      {/* Info central */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-fg m-0 truncate">{routine.title}</p>
+        <div className="mt-xxs flex items-center gap-xs flex-wrap">
+          {exerciseCount > 0 && (
+            <Badge variant="neutral" size="sm">
+              {exerciseCount} {exerciseCount === 1 ? "ejercicio" : "ejercicios"}
+            </Badge>
+          )}
+          {dayStr && (
+            <Badge variant="neutral" size="sm">
               {dayStr}
-            </p>
-            {lastEdited && (
-              <p className="text-xs text-fg-tertiary m-0">{lastEdited}</p>
-            )}
-          </div>
+            </Badge>
+          )}
+          {assignedCount > 0 && (
+            <Badge variant="success" size="sm">
+              {assignedCount} {assignedCount === 1 ? "alumno" : "alumnos"}
+            </Badge>
+          )}
+          {lastEdited && (
+            <span className="text-xs" style={{ color: "var(--fg-tertiary)" }}>
+              {lastEdited}
+            </span>
+          )}
         </div>
       </div>
-    </Link>
+
+      {/* Acción */}
+      <Link href={href} className="no-underline flex-shrink-0">
+        <Button variant="secondary" size="sm" iconRight={<ChevronRight size={14} />}>
+          Ver rutina
+        </Button>
+      </Link>
+    </div>
   );
 };
+

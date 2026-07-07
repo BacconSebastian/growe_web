@@ -8,17 +8,14 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { GradientSurface } from "@/components/ui/GradientSurface";
-import { SkeletonBox, SkeletonLine } from "@/components/ui/Skeleton";
+import { SkeletonLine, SkeletonCircle } from "@/components/ui/Skeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import {
-  PlanningCard,
-  PLANNING_CARD_HEIGHT,
-} from "@/components/plannings/PlanningCard";
+import { PlanningRow, ROW_HEIGHT } from "@/components/plannings/PlanningCard";
 import { listPlannings } from "@/lib/api/plannings";
 import { getErrorMessage } from "@/lib/utils";
 import type { Planning } from "@/lib/api/types";
 
-const PER_PAGE = 8;
+const PER_PAGE = 7;
 
 // Filtro por días asignados (valor = clave inglesa; label = español)
 const DAY_OPTIONS: { value: string; label: string }[] = [
@@ -30,6 +27,56 @@ const DAY_OPTIONS: { value: string; label: string }[] = [
   { value: "saturday", label: "Sábado" },
   { value: "sunday", label: "Domingo" },
 ];
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function ListSkeleton() {
+  const rows = Array.from({ length: PER_PAGE }, (_, i) => i);
+  return (
+    <GradientSurface>
+      <div
+        className="flex flex-col"
+        style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+      >
+        {rows.map((i) => (
+          <div
+            key={i}
+            className="flex items-center gap-md px-xl"
+            style={{
+              height: ROW_HEIGHT,
+              ...(i < PER_PAGE - 1
+                ? { borderBottom: "1px solid var(--separator-subtle)" }
+                : {}),
+            }}
+          >
+            <SkeletonCircle size={40} />
+            <div className="flex flex-col gap-xs flex-1">
+              <SkeletonLine width={160} height={14} />
+              <div className="flex gap-xs">
+                <SkeletonLine width={80} height={18} className="rounded-pill" />
+                <SkeletonLine width={70} height={18} className="rounded-pill" />
+                <SkeletonLine width={80} height={18} className="rounded-pill" />
+              </div>
+            </div>
+            <SkeletonLine width={112} height={30} />
+          </div>
+        ))}
+      </div>
+
+      {/* Shell de paginación — espeja el padding/altura real de <Pagination> */}
+      <div
+        className="flex items-center justify-between gap-lg py-md px-lg"
+        style={{ borderTop: "1px solid var(--separator-subtle)" }}
+      >
+        <SkeletonLine width={80} height={14} />
+        <div className="flex items-center gap-sm">
+          <SkeletonLine width={84} height={30} className="rounded-pill" />
+          <SkeletonLine width={90} height={30} className="rounded-pill" />
+        </div>
+      </div>
+    </GradientSurface>
+  );
+}
 
 export default function PlanningsPage() {
   const [plannings, setPlannings] = useState<Planning[]>([]);
@@ -109,30 +156,14 @@ export default function PlanningsPage() {
 
       {/* Contenido */}
       {loading ? (
-        <GradientSurface>
-          <div className="min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
-              {Array.from({ length: PER_PAGE }).map((_, i) => (
-                <SkeletonBox key={i} height={PLANNING_CARD_HEIGHT} />
-              ))}
-            </div>
-          </div>
-          {/* Shell de paginación */}
-          <div
-            className="flex items-center justify-between gap-lg py-md px-lg"
-            style={{ borderTop: "1px solid var(--separator-subtle)" }}
-          >
-            <SkeletonLine width={80} height={14} />
-            <div className="flex items-center gap-sm">
-              <SkeletonLine width={84} height={30} className="rounded-pill" />
-              <SkeletonLine width={90} height={30} className="rounded-pill" />
-            </div>
-          </div>
-        </GradientSurface>
+        <ListSkeleton />
       ) : plannings.length === 0 && !hasActiveFilters ? (
         /* No hay NINGUNA planificación creada */
         <GradientSurface>
-          <div className="flex flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+          <div
+            className="flex flex-col items-center justify-center gap-sm px-xl text-center"
+            style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+          >
             <CalendarDays size={28} style={{ color: "var(--fg-tertiary)" }} />
             <p className="text-base font-medium text-fg m-0">
               No tenés planificaciones
@@ -146,27 +177,43 @@ export default function PlanningsPage() {
               </Button>
             </Link>
           </div>
+          {/* Paginación siempre visible */}
+          <div style={{ borderTop: "1px solid var(--separator-subtle)" }}>
+            <Pagination
+              page={page}
+              perPage={PER_PAGE}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
         </GradientSurface>
       ) : (
+        /* Filas wrapeadas en GradientSurface — el alto reservado para PER_PAGE filas
+           asegura que la paginación siempre quede en el mismo lugar. */
         <GradientSurface>
-          <div className="flex flex-col min-h-[792px] md:min-h-[600px] xl:min-h-[408px]">
+          <div
+            className="flex flex-col"
+            style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+          >
             {plannings.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-sm py-5xl px-xl text-center">
+              <div
+                className="flex flex-col items-center justify-center gap-sm px-xl text-center"
+                style={{ minHeight: ROW_HEIGHT * PER_PAGE }}
+              >
                 <CalendarDays size={28} style={{ color: "var(--fg-tertiary)" }} />
                 <p className="text-sm text-fg-secondary m-0">
                   No hay planificaciones que coincidan con los filtros.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-lg p-xl">
-                {plannings.map((planning) => (
-                  <PlanningCard
-                    key={planning.id}
-                    planning={planning}
-                    href={`/plannings/${planning.id}`}
-                  />
-                ))}
-              </div>
+              plannings.map((planning, idx) => (
+                <PlanningRow
+                  key={planning.id}
+                  planning={planning}
+                  href={`/plannings/${planning.id}`}
+                  isLast={idx === plannings.length - 1}
+                />
+              ))
             )}
           </div>
 

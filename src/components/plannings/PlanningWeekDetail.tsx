@@ -6,8 +6,12 @@
  * Editor de UNA semana: calendario semanal estilo StudentWeeklyProgress con
  * celdas clickeables (grid-cols-7). Máximo 1 rutina por día.
  *
- * Click en celda VACÍA → abrir picker de rutinas (día preseleccionado).
- * Click en celda CON rutina → Modal con WeekRoutineExercisesEditor + "Quitar rutina".
+ * Click en celda VACÍA → crea una rutina "draft" (en memoria, sin persistir) y
+ * la muestra inline debajo del calendario vía WeekRoutineExercisesEditor. En el
+ * input de nombre del draft el usuario puede buscar una rutina existente (se
+ * copia su contenido) o escribir un nombre nuevo — al Guardar se crea la rutina
+ * real (ver DRAFT_WK_RT_ID / handleStartDraftForDay / handleSaveRoutine).
+ * Click en celda CON rutina → panel inline con WeekRoutineExercisesEditor + "Eliminar".
  *
  * Rutinas sin día: pills debajo del calendario, clickeables para editar.
  *
@@ -16,15 +20,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Copy, ClipboardPaste, Trash2, Loader2 } from "lucide-react";
+import { Copy, ClipboardPaste, Trash2, Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { SkeletonLine } from "@/components/ui/Skeleton";
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { GradientSurface } from "@/components/ui/GradientSurface";
-import { Input } from "@/components/ui/Input";
 import { getErrorMessage } from "@/lib/utils";
 
 import { WeekRoutineExercisesEditor } from "./WeekRoutineExercisesEditor";
@@ -33,22 +33,21 @@ import { pasteRoutineIntoWeek } from "@/lib/planning-week-paste";
 
 import {
   saveWeekRoutines,
-  assignRoutineToWeek,
   removeRoutineFromWeek,
   type SaveWeekRoutineInput,
-  type AssignRoutineToWeekPayload,
 } from "@/lib/api/plannings";
 import {
-  coachAssignRoutineToWeek,
   coachRemoveRoutineFromWeek,
   coachSaveWeekRoutines,
   createAndAssignStudentRoutine,
-  listStudentRoutines,
 } from "@/lib/api/coaching";
-import { listRoutines } from "@/lib/api/routines";
 
 import type { PlanningWeek, PlanningWeekRoutine, PlanningWeekRoutineExercise, DayOfWeek } from "@/lib/api/types";
 import type { RoutineClipboard } from "@/components/plannings/PlanningOverview";
+
+/** ID temporal usado por la rutina "draft" (no persistida) mostrada inline al
+ * tocar un día vacío del calendario. Nunca colisiona con un id real (siempre > 0). */
+const DRAFT_WK_RT_ID = -1;
 
 // ─── Constantes de calendario ─────────────────────────────────────────────────
 
@@ -77,11 +76,6 @@ export interface PlanningWeekDetailProps {
   previousWeek?: PlanningWeek;
 }
 
-interface RoutineOption {
-  id: number;
-  title: string;
-}
-
 /** Determina el día efectivo de una PlanningWeekRoutine. */
 function effectiveDay(wr: PlanningWeekRoutine): DayOfWeek | null {
   if (wr.day_of_week) return wr.day_of_week as DayOfWeek;
@@ -96,157 +90,6 @@ function routineCounts(wr: PlanningWeekRoutine): { exercises: number; sets: numb
   return { exercises, sets };
 }
 
-// ─── RoutinePickerModal ───────────────────────────────────────────────────────
-
-interface RoutineSelectorProps {
-  open: boolean;
-  onClose: () => void;
-  onSelect: (routineId: number) => void;
-  onCreate: () => void;
-  routines: RoutineOption[];
-  loading: boolean;
-  error: string | null;
-}
-
-const RoutinePickerModal: React.FC<RoutineSelectorProps> = ({
-  open,
-  onClose,
-  onSelect,
-  onCreate,
-  routines,
-  loading,
-  error,
-}) => {
-  const [search, setSearch] = useState("");
-  const filtered = routines.filter((r) => r.title.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <Modal open={open} onClose={onClose} title="Asignar rutina" size="md">
-      <div className="flex flex-col gap-lg">
-        {error && <ErrorBanner message={error} />}
-        <Input placeholder="Buscar rutina..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        {loading ? (
-          <div className="flex flex-col gap-sm">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <SkeletonLine key={i} height={44} />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-fg-tertiary text-center py-lg">
-            {search ? "Sin resultados." : "No hay rutinas disponibles."}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-xs max-h-72 overflow-y-auto">
-            {filtered.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => {
-                  onSelect(r.id);
-                  onClose();
-                }}
-                className="text-left px-lg py-md rounded-md text-sm font-medium text-fg transition-colors"
-                style={{ background: "var(--fill-quaternary)" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--fill-tertiary)")}
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLButtonElement).style.background = "var(--fill-quaternary)")
-                }
-              >
-                {r.title}
-              </button>
-            ))}
-          </div>
-        )}
-        {/* Opción de crear nueva rutina */}
-        <div className="pt-sm" style={{ borderTop: "1px solid var(--separator-subtle)" }}>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconLeft={<Pencil size={13} />}
-            onClick={() => {
-              onClose();
-              onCreate();
-            }}
-            className="w-full"
-          >
-            Crear rutina nueva
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-// ─── CreateRoutineModal ───────────────────────────────────────────────────────
-
-interface CreateRoutineModalProps {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: (title: string) => Promise<void>;
-}
-
-const CreateRoutineModal: React.FC<CreateRoutineModalProps> = ({ open, onClose, onConfirm }) => {
-  const [title, setTitle] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setTitle("");
-      setError(null);
-    }
-  }, [open]);
-
-  const handleSubmit = async () => {
-    if (!title.trim()) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await onConfirm(title.trim());
-      onClose();
-    } catch (err) {
-      setError(getErrorMessage(err, "No se pudo crear la rutina."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Crear rutina nueva" size="sm" dismissable={!saving}>
-      <div className="flex flex-col gap-lg">
-        {error && <ErrorBanner message={error} />}
-        <div className="flex flex-col gap-xs">
-          <label className="text-sm font-medium text-fg-secondary">Nombre de la rutina</label>
-          <Input
-            placeholder="Ej: Push A"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            autoFocus
-          />
-        </div>
-        <div className="flex flex-col gap-sm">
-          <Button
-            variant="primary"
-            size="md"
-            loading={saving}
-            onClick={handleSubmit}
-            disabled={!title.trim()}
-            className="w-full"
-          >
-            Crear rutina
-          </Button>
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" disabled={saving} onClick={onClose}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
@@ -260,18 +103,30 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
   onCopyRoutine,
   previousWeek,
 }) => {
-  const [routinePickerOpen, setRoutinePickerOpen] = useState(false);
-  const [createRoutineOpen, setCreateRoutineOpen] = useState(false);
-  const [routineOptions, setRoutineOptions] = useState<RoutineOption[]>([]);
-  const [routinesLoading, setRoutinesLoading] = useState(false);
-  const [routinesError, setRoutinesError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // Día destino para el picker/crear (null = "sin día asignado")
-  const [pendingDay, setPendingDay] = useState<DayOfWeek | null>(null);
 
   // Rutina seleccionada → se muestra inline debajo del calendario (no modal)
   const [selectedWkRtId, setSelectedWkRtId] = useState<number | null>(null);
+
+  // Rutina "draft" (no persistida) mostrada inline al tocar un día vacío del
+  // calendario. Se reemplaza al iniciar un draft para otro día, y se descarta
+  // al guardar (se crea la rutina real) o al quitarla explícitamente.
+  const [draftRoutine, setDraftRoutine] = useState<PlanningWeekRoutine | null>(null);
+  // Identificador de instancia único del draft actual (distinto en cada draft nuevo,
+  // aunque el draft siempre use id=DRAFT_WK_RT_ID). Se usa como `key` del editor para
+  // forzar el remount y evitar que el título/bloques de un draft anterior queden
+  // "pegados" al abrir un draft nuevo (ambos comparten id=-1 y title inicial="").
+  const [draftNonce, setDraftNonce] = useState<string | null>(null);
+
+  // Al cambiar de semana (navegación ◀▶), descartar cualquier draft en memoria:
+  // de lo contrario un draft sin guardar de la Semana 1 sobrevive y aparece
+  // pintado en el mismo día de la Semana 2 (la semana es otro objeto, el draft
+  // vive en estado local ajeno a `week.routines`).
+  useEffect(() => {
+    setDraftRoutine(null);
+    setDraftNonce(null);
+    setSelectedWkRtId(null);
+  }, [week.id]);
 
   // Celda que está pegando ahora (para overlay de carga). Key: wkRt-<id> | day-<dow>.
   const [pastingKey, setPastingKey] = useState<string | null>(null);
@@ -299,11 +154,12 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
     return map;
   }, [week.routines]);
 
-  // La rutina seleccionada se deriva de week.routines (siempre fresca tras editar/quitar)
-  const selectedWkRt = useMemo(
-    () => week.routines.find((r) => r.id === selectedWkRtId) ?? null,
-    [week.routines, selectedWkRtId],
-  );
+  // La rutina seleccionada se deriva de week.routines (siempre fresca tras editar/quitar),
+  // salvo cuando el seleccionado es el draft en memoria (no persistido todavía).
+  const selectedWkRt = useMemo(() => {
+    if (selectedWkRtId === DRAFT_WK_RT_ID) return draftRoutine;
+    return week.routines.find((r) => r.id === selectedWkRtId) ?? null;
+  }, [week.routines, selectedWkRtId, draftRoutine]);
 
   const unassignedRoutines = useMemo(() => week.routines.filter((wr) => effectiveDay(wr) === null), [week.routines]);
 
@@ -326,117 +182,57 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
     return matchByTitle?.exercises ?? null;
   }, [selectedWkRt, previousWeek]);
 
-  // Cargar opciones de rutina
-  const loadRoutineOptions = useCallback(async () => {
-    setRoutinesLoading(true);
-    setRoutinesError(null);
-    try {
-      if (mode === "coach" && studentId != null) {
-        const items = await listStudentRoutines(studentId);
-        setRoutineOptions(items.map((r) => ({ id: r.id, title: r.title })));
-      } else {
-        const res = await listRoutines({ page: 1 });
-        setRoutineOptions(res.items.map((r) => ({ id: r.id, title: r.title })));
-      }
-    } catch (err) {
-      setRoutinesError(getErrorMessage(err, "No se pudieron cargar las rutinas."));
-    } finally {
-      setRoutinesLoading(false);
-    }
-  }, [mode, studentId]);
-
-  const handleOpenRoutinePicker = useCallback(
-    (day: DayOfWeek | null) => {
-      setPendingDay(day);
-      loadRoutineOptions();
-      setRoutinePickerOpen(true);
-    },
-    [loadRoutineOptions],
-  );
-
-  const handleOpenCreateRoutine = useCallback((day: DayOfWeek | null) => {
-    setPendingDay(day);
-    setCreateRoutineOpen(true);
-  }, []);
-
   // Selecciona/deselecciona la rutina de un día (toggle) → panel inline abajo
   const handleSelectDayRoutine = (wr: PlanningWeekRoutine) => {
     setSelectedWkRtId((prev) => (prev === wr.id ? null : wr.id));
   };
 
-  // Asignar rutina existente a la semana (con día)
-  const handleAssignRoutine = async (routineId: number) => {
-    setActionError(null);
-    try {
-      const payload: AssignRoutineToWeekPayload = {
-        routine_id: routineId,
-        day_of_week: pendingDay ?? undefined,
-      };
-      let newWkRt: PlanningWeekRoutine;
-
-      if (mode === "coach" && studentId != null) {
-        newWkRt = await coachAssignRoutineToWeek(studentId, week.id, payload);
-      } else {
-        newWkRt = await assignRoutineToWeek(week.id, payload);
-      }
-
-      onWeekUpdated({
-        ...week,
-        routines: [...week.routines, newWkRt],
-      });
-    } catch (err) {
-      setActionError(getErrorMessage(err, "No se pudo asignar la rutina."));
-    }
-  };
-
-  // Crear rutina nueva en la semana (con día)
-  const handleCreateRoutine = async (title: string) => {
-    setActionError(null);
-    if (mode === "coach" && studentId != null) {
-      const newWkRt = await createAndAssignStudentRoutine(studentId, week.id, {
-        title,
-        day_of_week: pendingDay ?? undefined,
-      });
-      onWeekUpdated({
-        ...week,
-        routines: [...week.routines, newWkRt],
-      });
-    } else {
-      const existingRoutineInputs: SaveWeekRoutineInput[] = week.routines.map((r) => ({
-        week_routine_id: r.id,
-        routine_id: r.routine_id,
-        title: r.routine_title,
-        day_of_week: effectiveDay(r),
-        order_index: r.order_index,
-        exercises: r.exercises.map((ex, idx) => ({
-          exercise_id: ex.exercise_id,
-          name: ex.name,
-          order_index: idx + 1,
-          series: ex.series,
-          repetitions: ex.repetitions,
-          exercise_type: ex.exercise_type,
-          is_warmup: ex.is_warmup,
-          sets_data: ex.sets_data,
-          variables_config: ex.variables_config,
-          superset_group: ex.superset_group,
-        })),
-      }));
-
-      const newRoutineInput: SaveWeekRoutineInput = {
-        week_routine_id: null,
-        routine_id: null,
-        title,
-        day_of_week: pendingDay ?? undefined,
+  /**
+   * Inicia una rutina "draft" para un día vacío: se muestra inline debajo del
+   * calendario (WeekRoutineExercisesEditor con enableNameSearch) sin pegarle
+   * a la API todavía. El usuario puede buscar una rutina existente en el input
+   * de nombre (se copia su contenido) o escribir un nombre nuevo y Guardar
+   * para crear la rutina vacía. Reemplaza cualquier draft anterior.
+   */
+  const handleStartDraftForDay = useCallback(
+    (day: DayOfWeek) => {
+      const maxOrderIndex = week.routines.reduce((max, r) => Math.max(max, r.order_index ?? -1), -1);
+      const draft: PlanningWeekRoutine = {
+        id: DRAFT_WK_RT_ID,
+        routine_id: 0,
+        routine_title: "",
+        day_of_week: day,
+        routine_day_of_week: null,
+        order_index: maxOrderIndex + 1,
+        created_by: currentUserId,
         exercises: [],
       };
+      setDraftRoutine(draft);
+      setDraftNonce(crypto.randomUUID());
+      setSelectedWkRtId(DRAFT_WK_RT_ID);
+    },
+    [week.routines, currentUserId],
+  );
 
-      const updatedWeek = await saveWeekRoutines(week.id, [...existingRoutineInputs, newRoutineInput]);
-      onWeekUpdated(updatedWeek);
-    }
-  };
+  /**
+   * Actualiza en vivo el `routine_title` del draft en memoria a medida que el
+   * usuario escribe/copia un nombre en el editor, para que la card del día
+   * refleje el nombre real en vez de quedar fija en "Nueva rutina". Solo aplica
+   * al draft (WeekRoutineExercisesEditor solo dispara este callback cuando
+   * enableNameSearch está activo, es decir, únicamente para el draft).
+   */
+  const handleDraftTitleChange = useCallback((newTitle: string) => {
+    setDraftRoutine((prev) => (prev ? { ...prev, routine_title: newTitle } : prev));
+  }, []);
 
-  // Quitar rutina de la semana
+  // Quitar rutina de la semana (o descartar el draft en memoria, sin API).
   const handleRemoveRoutine = async (wkRtId: number) => {
+    if (wkRtId === DRAFT_WK_RT_ID) {
+      setDraftRoutine(null);
+      setDraftNonce(null);
+      setSelectedWkRtId(null);
+      return;
+    }
     setActionError(null);
     if (mode === "coach" && studentId != null) {
       await coachRemoveRoutineFromWeek(studentId, wkRtId);
@@ -471,6 +267,43 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
    * data actual) para que el backend no las borre implícitamente.
    */
   const handleSaveRoutine = async (wkRtId: number, title: string, exercises: Array<Record<string, unknown>>) => {
+    // Guardar el draft: crea la rutina nueva (con nombre libre o hidratada por
+    // búsqueda) y la asigna a la semana. own → saveWeekRoutines con TODAS las
+    // rutinas existentes + la entrada nueva. coach → endpoint atómico.
+    if (wkRtId === DRAFT_WK_RT_ID) {
+      if (!draftRoutine) return;
+      if (mode === "coach" && studentId != null) {
+        const newWkRt = await createAndAssignStudentRoutine(studentId, week.id, {
+          title,
+          day_of_week: draftRoutine.day_of_week ?? undefined,
+          exercises,
+        });
+        onWeekUpdated({ ...week, routines: [...week.routines, newWkRt] });
+      } else {
+        const existingRoutineInputs: SaveWeekRoutineInput[] = week.routines.map((r) => ({
+          week_routine_id: r.id,
+          routine_id: r.routine_id,
+          title: r.routine_title,
+          day_of_week: effectiveDay(r),
+          order_index: r.order_index,
+          exercises: mapRoutineExercisesToInput(r.exercises),
+        }));
+        const newRoutineInput: SaveWeekRoutineInput = {
+          week_routine_id: null,
+          routine_id: null,
+          title,
+          day_of_week: draftRoutine.day_of_week ?? undefined,
+          exercises,
+        };
+        const updatedWeek = await saveWeekRoutines(week.id, [...existingRoutineInputs, newRoutineInput]);
+        onWeekUpdated(updatedWeek);
+      }
+      setDraftRoutine(null);
+      setDraftNonce(null);
+      setSelectedWkRtId(null);
+      return;
+    }
+
     const payload: SaveWeekRoutineInput[] = week.routines.map((r) => ({
       week_routine_id: r.id,
       routine_id: r.routine_id,
@@ -568,6 +401,9 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
               const counts = wr ? routineCounts(wr) : null;
               const canEditCell =
                 mode === "own" || (mode === "coach" && wr !== undefined && wr.created_by === currentUserId);
+              // Draft activo para este día: solo aplica si el día no tiene rutina real
+              // asignada (un día con rutina real nunca dispara/mantiene un draft).
+              const isDraftDay = !wr && draftRoutine !== null && draftRoutine.day_of_week === dow;
 
               return (
                 <div key={dow} className="flex flex-col items-center gap-xs">
@@ -639,16 +475,51 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
                         </>
                       }
                     />
+                  ) : isDraftDay ? (
+                    /* Celda con rutina "draft" (nueva, aún no guardada) */
+                    <RoutineDayCard
+                      title={draftRoutine!.routine_title.trim() || "Nueva rutina"}
+                      exercises={0}
+                      sets={0}
+                      selected={selectedWkRtId === DRAFT_WK_RT_ID}
+                      onClick={() => setSelectedWkRtId(DRAFT_WK_RT_ID)}
+                      titleAttr="Rutina nueva (sin guardar) · click para editar"
+                      metaOverlay={
+                        <>
+                          <IconButton title="No hay rutina para copiar" disabled onClick={(e) => e.stopPropagation()}>
+                            <Copy size={13} />
+                          </IconButton>
+                          <IconButton
+                            title="No hay rutina copiada"
+                            disabled
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ClipboardPaste size={13} />
+                          </IconButton>
+                          {/* Descartar el draft — no llama a la API */}
+                          <IconButton
+                            title="Descartar rutina nueva"
+                            destructive
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveRoutine(DRAFT_WK_RT_ID);
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </IconButton>
+                        </>
+                      }
+                    />
                   ) : (
                     /* Celda vacía */
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={() => handleOpenRoutinePicker(dow)}
+                      onClick={() => handleStartDraftForDay(dow)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          handleOpenRoutinePicker(dow);
+                          handleStartDraftForDay(dow);
                         }
                       }}
                       className="group relative w-full flex flex-col items-center justify-center gap-xs rounded-lg px-xs py-md text-center cursor-pointer transition-colors hover:bg-fill-tertiary"
@@ -790,7 +661,11 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
       {/* ── Editor de la rutina del día seleccionado (barra + ejercicios, inline) ── */}
       {selectedWkRt && (
         <WeekRoutineExercisesEditor
-          key={selectedWkRt.id}
+          // Las rutinas reales usan su id como key. El draft SIEMPRE tiene
+          // id=DRAFT_WK_RT_ID, así que usamos el nonce de instancia para forzar
+          // el remount al abrir un draft nuevo — si no, el título/bloques del
+          // draft anterior (misma key) quedarían "pegados" al nuevo.
+          key={selectedWkRt.id === DRAFT_WK_RT_ID ? `draft-${draftNonce}` : selectedWkRt.id}
           weekRoutine={selectedWkRt}
           readOnly={!(mode === "own" || (mode === "coach" && selectedWkRt.created_by === currentUserId))}
           mode={mode}
@@ -798,24 +673,11 @@ export const PlanningWeekDetail: React.FC<PlanningWeekDetailProps> = ({
           prevExercises={prevExercisesForSelected ?? undefined}
           onSave={handleSaveRoutine}
           onDelete={handleRemoveRoutine}
+          enableNameSearch={selectedWkRt.id === DRAFT_WK_RT_ID}
+          onTitleChange={selectedWkRt.id === DRAFT_WK_RT_ID ? handleDraftTitleChange : undefined}
         />
       )}
 
-      {/* Modals */}
-      <RoutinePickerModal
-        open={routinePickerOpen}
-        onClose={() => setRoutinePickerOpen(false)}
-        onSelect={handleAssignRoutine}
-        onCreate={() => handleOpenCreateRoutine(pendingDay)}
-        routines={routineOptions}
-        loading={routinesLoading}
-        error={routinesError}
-      />
-      <CreateRoutineModal
-        open={createRoutineOpen}
-        onClose={() => setCreateRoutineOpen(false)}
-        onConfirm={handleCreateRoutine}
-      />
       <ConfirmDialog
         open={pastePending !== null}
         title="Pegar rutina"

@@ -10,8 +10,8 @@
  * Uso: embebido dentro de PlanningWeekDetail como panel colapsable por rutina.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Save, Trash2, History, CalendarClock } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Save, Trash2, History, CalendarClock, Loader2 } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 import { Button } from "@/components/ui/Button";
@@ -34,8 +34,9 @@ import {
   fillFromPreviousWeek,
   type RoutineSnapshotForFill,
 } from "@/lib/exercise-value-fill";
-import { combineIntoGroup, ungroupSuperset, removeFromSupersetGroup } from "@/lib/superset-edit";
-import { getLastStudentRoutineLog } from "@/lib/api/coaching";
+import { combineIntoGroup, ungroupSuperset, removeFromSupersetGroup, remapSupersetGroups } from "@/lib/superset-edit";
+import { getLastStudentRoutineLog, listStudentRoutines, getStudentRoutine } from "@/lib/api/coaching";
+import { listRoutines, getRoutine } from "@/lib/api/routines";
 
 import type {
   PlanningWeekRoutineExercise,
@@ -43,6 +44,11 @@ import type {
   PlanningWeekRoutine,
   ExerciseType,
 } from "@/lib/api/types";
+
+interface RoutineSearchItem {
+  id: number;
+  title: string;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +81,20 @@ interface WeekRoutineExercisesEditorProps {
    * Derivado por PlanningWeekDetail a partir del prop previousWeek.
    */
   prevExercises?: PlanningWeekRoutineExercise[];
+  /**
+   * Habilita la búsqueda de rutinas existentes en el input de nombre — usado
+   * exclusivamente para la rutina "draft" de un día vacío (PlanningWeekDetail).
+   * Al elegir un resultado se copia nombre + ejercicios de esa rutina al draft.
+   * Escribir un nombre sin elegir del dropdown sigue funcionando (nombre libre).
+   */
+  enableNameSearch?: boolean;
+  /**
+   * Se dispara con el nombre actualizado cada vez que cambia (tipeado o copiado
+   * de una rutina existente). Usado solo por el draft, para que la card del día
+   * en `PlanningWeekDetail` refleje el nombre en vivo (el título vive localmente
+   * acá y de otro modo el padre nunca se entera hasta el Guardar).
+   */
+  onTitleChange?: (title: string) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -203,6 +223,8 @@ export const WeekRoutineExercisesEditor: React.FC<
   mode = "own",
   studentId,
   prevExercises,
+  enableNameSearch = false,
+  onTitleChange,
 }) => {
   const [blocks, setBlocks] = useState<ExerciseBlockData[]>([]);
   const [title, setTitle] = useState(weekRoutine.routine_title);
@@ -218,6 +240,14 @@ export const WeekRoutineExercisesEditor: React.FC<
   const [combineMode, setCombineMode] = useState(false);
   /** _keys de los bloques seleccionados para combinar */
   const [combineSelectedKeys, setCombineSelectedKeys] = useState<Set<string>>(new Set());
+
+  // ── Búsqueda de rutina existente en el input de nombre (solo si enableNameSearch) ──
+  /** Catálogo cargado lazy (null = todavía no se pidió). */
+  const [allRoutines, setAllRoutines] = useState<RoutineSearchItem[] | null>(null);
+  const [routineSearchLoading, setRoutineSearchLoading] = useState(false);
+  /** true tras elegir un resultado — evita reabrir el dropdown con el nombre ya copiado. */
+  const [suppressRoutineSearch, setSuppressRoutineSearch] = useState(false);
+  const [loadingExistingRoutineId, setLoadingExistingRoutineId] = useState<number | null>(null);
 
   // Sincronizar el nombre cuando cambia la rutina
   useEffect(() => {
@@ -240,6 +270,85 @@ export const WeekRoutineExercisesEditor: React.FC<
     setSavedSuccess(false);
     setSaveError(null);
   }, [weekRoutine.id, weekRoutine.exercises]);
+
+  /**
+   * Cambia el nombre de la rutina. Cuando `enableNameSearch` está activo (draft
+   * de día vacío), además dispara la carga lazy del catálogo de rutinas la
+   * primera vez que el usuario escribe algo, para poder filtrar en vivo.
+   */
+  const handleTitleChange = useCallback(
+    (v: string) => {
+      setTitle(v);
+      onTitleChange?.(v);
+      if (!enableNameSearch) return;
+      setSuppressRoutineSearch(false);
+      if (v.trim().length >= 1 && allRoutines === null && !routineSearchLoading) {
+        setRoutineSearchLoading(true);
+        const loader =
+          mode === "coach" && studentId != null
+            ? listStudentRoutines(studentId).then((items) =>
+                items.map((r) => ({ id: r.id, title: r.title }))
+              )
+            : listRoutines({ page: 1 }).then((res) =>
+                res.items.map((r) => ({ id: r.id, title: r.title }))
+              );
+        loader
+          .then((list) => setAllRoutines(list))
+          .catch(() => setAllRoutines([]))
+          .finally(() => setRoutineSearchLoading(false));
+      }
+    },
+    [enableNameSearch, allRoutines, routineSearchLoading, mode, studentId, onTitleChange]
+  );
+
+  /** Resultados filtrados en memoria por el nombre tipeado. Vacío si no aplica. */
+  const filteredRoutines = useMemo(() => {
+    if (!enableNameSearch || suppressRoutineSearch || !allRoutines) return [];
+    const q = title.trim().toLowerCase();
+    if (!q) return [];
+    return allRoutines.filter((r) => r.title.toLowerCase().includes(q)).slice(0, 20);
+  }, [enableNameSearch, allRoutines, title, suppressRoutineSearch]);
+
+  /**
+   * Elige una rutina existente del dropdown: trae el detalle completo y copia
+   * nombre + ejercicios al draft en memoria (NO edita el template original).
+   * Los `routine_exercise_id` copiados quedan en null y los `superset_group`
+   * se regeneran para no colisionar con la rutina fuente.
+   */
+  const handleSelectExistingRoutine = useCallback(
+    async (id: number) => {
+      setLoadingExistingRoutineId(id);
+      setSaveError(null);
+      try {
+        const routine =
+          mode === "coach" && studentId != null
+            ? await getStudentRoutine(studentId, id)
+            : await getRoutine(id);
+        const source =
+          routine.current_week_exercises && routine.current_week_exercises.length > 0
+            ? routine.current_week_exercises
+            : routine.exercises;
+        const sorted = [...source].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+        const copiedBlocks = sorted.map((ex, idx) => {
+          const block = routineExerciseToBlock(ex);
+          return {
+            ...block,
+            _key: `copy-${id}-${idx}-${Date.now()}-${Math.random()}`,
+            routine_exercise_id: null,
+          };
+        });
+        setBlocks(remapSupersetGroups(copiedBlocks));
+        setTitle(routine.title);
+        onTitleChange?.(routine.title);
+        setSuppressRoutineSearch(true);
+      } catch (err) {
+        setSaveError(getErrorMessage(err, "No se pudo cargar la rutina seleccionada."));
+      } finally {
+        setLoadingExistingRoutineId(null);
+      }
+    },
+    [mode, studentId, onTitleChange]
+  );
 
   const handleUpdate = useCallback(
     (key: string, updated: Partial<ExerciseBlockData>) => {
@@ -558,13 +667,62 @@ export const WeekRoutineExercisesEditor: React.FC<
       {/* ── Barra superior: nombre + fill buttons + Eliminar + Guardar ── */}
       {!combineMode && (
         <div className="flex items-center gap-md flex-wrap">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={readOnly}
-            placeholder="Nombre de la rutina..."
-            className="flex-1 min-w-[200px] h-11 rounded-pill px-lg bg-fill-tertiary text-fg placeholder-fg-tertiary text-base font-semibold border border-transparent outline-none transition-colors focus:border-primary disabled:cursor-default"
-          />
+          <div className="relative flex-1 min-w-[200px]">
+            <input
+              value={title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              disabled={readOnly}
+              placeholder={
+                enableNameSearch
+                  ? "Buscá una rutina existente o escribí un nombre nuevo..."
+                  : "Nombre de la rutina..."
+              }
+              autoComplete="off"
+              className="w-full h-11 rounded-pill px-lg bg-fill-tertiary text-fg placeholder-fg-tertiary text-base font-semibold border border-transparent outline-none transition-colors focus:border-primary disabled:cursor-default"
+            />
+
+            {/* Dropdown de rutinas existentes — solo en modo draft (enableNameSearch) */}
+            {enableNameSearch && !readOnly && (routineSearchLoading || filteredRoutines.length > 0) && (
+              <div
+                className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 flex flex-col gap-xxs rounded-md p-xs max-h-64 overflow-y-auto"
+                style={{
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--separator)",
+                  boxShadow: "var(--shadow-elevated)",
+                }}
+              >
+                {routineSearchLoading && filteredRoutines.length === 0 ? (
+                  <div className="flex items-center justify-center gap-sm py-md text-fg-tertiary">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span className="text-sm">Buscando rutinas...</span>
+                  </div>
+                ) : (
+                  filteredRoutines.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      disabled={loadingExistingRoutineId !== null}
+                      onClick={() => handleSelectExistingRoutine(r.id)}
+                      className="flex items-center justify-between gap-sm text-left px-md py-sm rounded-sm text-sm font-medium text-fg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ background: "var(--fill-quaternary)" }}
+                      onMouseEnter={(e) => {
+                        if (loadingExistingRoutineId !== null) return;
+                        (e.currentTarget as HTMLButtonElement).style.background = "var(--fill-tertiary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "var(--fill-quaternary)";
+                      }}
+                    >
+                      <span className="truncate">{r.title}</span>
+                      {loadingExistingRoutineId === r.id && (
+                        <Loader2 size={14} className="animate-spin flex-shrink-0" style={{ color: "var(--fg-tertiary)" }} />
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Botón "Últimos valores" — solo aplica en modo coach con routine_id.
               En "editar rutina" (own) se muestra pero disabled. */}

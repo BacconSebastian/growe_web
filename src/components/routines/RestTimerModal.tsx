@@ -16,6 +16,7 @@ interface RestTimerModalProps {
 }
 
 const STEP = 10; // segundos por tap en −/+
+const DEFAULT_REST_SECONDS = 90; // 01:30 — valor inicial cuando no hay descanso configurado
 
 /**
  * RestTimerModal — configura el descanso de una serie con display MM:SS y
@@ -31,7 +32,7 @@ export function RestTimerModal({
 
   useEffect(() => {
     if (open) {
-      setValue(initialSeconds ? formatTimerTime(initialSeconds) : "00:00");
+      setValue(formatTimerTime(initialSeconds ?? DEFAULT_REST_SECONDS));
     }
   }, [open, initialSeconds]);
 

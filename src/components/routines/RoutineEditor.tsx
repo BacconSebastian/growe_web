@@ -3,13 +3,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Save, Plus, Lock, Users, ChevronDown } from "lucide-react";
+import { Copy, Trash2, Save, Plus, Lock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
-import { MultiSelect } from "@/components/ui/MultiSelect";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SkeletonBox } from "@/components/ui/Skeleton";
@@ -17,7 +16,6 @@ import { SkeletonBox } from "@/components/ui/Skeleton";
 import { ExerciseBlock, ExerciseBlockData, routineExerciseToBlock, groupVariants } from "./ExerciseBlock";
 import { editableToRoutineSet } from "./SetsTable";
 import { SupersetGroupSection } from "./SupersetGroupSection";
-import { AssignRoutineModal } from "@/components/coaching/AssignRoutineModal";
 
 import { getRoutine, createRoutine, updateRoutine, deleteRoutine } from "@/lib/api/routines";
 import { getStudentRoutine, updateStudentRoutine } from "@/lib/api/coaching";
@@ -51,22 +49,6 @@ const schema = z.object({
   description: z.string().max(500).optional().or(z.literal("")),
 });
 type FormValues = z.infer<typeof schema>;
-
-// ─── Days of week config ──────────────────────────────────────────────────────
-
-const ALL_DAYS: {
-  key: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
-  dow: DayOfWeek;
-  label: string;
-}[] = [
-  { key: "mon", dow: "monday", label: "Lun" },
-  { key: "tue", dow: "tuesday", label: "Mar" },
-  { key: "wed", dow: "wednesday", label: "Mié" },
-  { key: "thu", dow: "thursday", label: "Jue" },
-  { key: "fri", dow: "friday", label: "Vie" },
-  { key: "sat", dow: "saturday", label: "Sáb" },
-  { key: "sun", dow: "sunday", label: "Dom" },
-];
 
 // ─── Helpers de payload ───────────────────────────────────────────────────────
 
@@ -197,9 +179,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
 
   // Authorship para modo edit-coach
   const [isReadOnly, setIsReadOnly] = useState(false);
-
-  // Modal de asignación a alumno
-  const [showAssignModal, setShowAssignModal] = useState(false);
 
   // ── Combine mode (superset) ───────────────────────────────────────────────
   const [combineMode, setCombineMode] = useState<{
@@ -560,8 +539,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
   // ─── Render ───────────────────────────────────────────────────────────────
 
   const groups = groupVariants(blocks);
-  const showStudentsSelect = mode === "create-own" || mode === "edit-own";
-  const assignedCount = (routine?.shares ?? []).filter((s) => s.status === "active").length;
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -595,35 +572,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
                 borderColor: errors.title ? "var(--destructive)" : "transparent",
               }}
             />
-
-            <MultiSelect
-              options={ALL_DAYS.map((d) => ({ value: d.dow, label: d.label }))}
-              selected={selectedDays}
-              onChange={(vals) => setSelectedDays(ALL_DAYS.filter((d) => vals.includes(d.dow)).map((d) => d.dow))}
-              placeholder="Días asignados"
-              ariaLabel="Días asignados"
-              disabled={isReadOnly}
-            />
-
-            {showStudentsSelect && (
-              <button
-                type="button"
-                disabled={!routineId}
-                onClick={() => routineId && setShowAssignModal(true)}
-                title={!routineId ? "Guardá la rutina primero" : undefined}
-                aria-label="Alumnos asignados"
-                className="flex-shrink-0 h-11 inline-flex items-center gap-sm rounded-pill border px-lg text-sm bg-fill-tertiary hover:bg-fill-quaternary transition-colors duration-150 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  borderColor: assignedCount > 0 ? "var(--primary)" : "transparent",
-                }}
-              >
-                <Users size={15} className="text-fg-tertiary" />
-                <span className={assignedCount > 0 ? "text-fg" : "text-fg-secondary"}>
-                  {assignedCount > 0 ? `Alumnos asignados (${assignedCount})` : "Alumnos asignados"}
-                </span>
-                <ChevronDown size={14} className="text-fg-tertiary" />
-              </button>
-            )}
 
             {!isReadOnly && (
               <>
@@ -838,17 +786,6 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({ mode, routineId, s
         onClose={() => setShowDeleteConfirm(false)}
       />
 
-      {showAssignModal && routine && routineId && (
-        <AssignRoutineModal
-          open={showAssignModal}
-          routineId={routineId}
-          routineTitle={routine.title}
-          onClose={() => setShowAssignModal(false)}
-          onAssigned={() => {
-            // No cerramos — el coach puede asignar a varios alumnos seguidos.
-          }}
-        />
-      )}
     </form>
   );
 };
